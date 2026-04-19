@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=69.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cat-agent-backend"
+version = "0.1.0"
+description = "Local backend for cat health and emotion recognition agent MVP."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.30.0",
+  "python-multipart>=0.0.9",
+  "pydantic>=2.7.0",
+  "websockets>=12.0",
+  "httpx>=0.27.0",
+  "pillow>=10.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+]
+rag = [
+  "sentence-transformers>=3.0.0",
+]
+video = [
+  "opencv-python>=4.10.0.84",
+  "numpy>=1.26.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.setuptools.packages.find]
+include = ["app*"]

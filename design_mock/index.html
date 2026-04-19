@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CatAgentApp - 首页</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
+        body { font-family: 'Noto Sans SC', sans-serif; background-color: #f3f4f6; }
+        .app-container { width: 375px; height: 812px; background: #FFF7ED; position: relative; overflow: hidden; border: 8px solid #333; border-radius: 40px; margin: 20px auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .main-gradient { background: linear-gradient(135deg, #FF9F43 0%, #FF6B6B 100%); }
+    </style>
+</head>
+<body>
+<div class="app-container flex flex-col">
+<!-- 状态栏 -->
+<div class="px-6 pt-4 pb-2 flex justify-between items-center text-xs font-bold">
+<span>09:41</span>
+<div class="flex gap-1">
+<iconify-icon icon="mdi:signal" width="14"></iconify-icon>
+<iconify-icon icon="mdi:wifi" width="14"></iconify-icon>
+<iconify-icon icon="mdi:battery" width="14"></iconify-icon>
+</div>
+</div>
+<!-- 顶部用户信息 -->
+<div class="px-5 py-3 flex justify-between items-center">
+<div class="flex items-center gap-3">
+<div class="w-10 h-10 rounded-full border-2 border-orange-400 p-0.5">
+<img alt="User Avatar" class="w-full h-full rounded-full object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/61a8b5f393f84a259aee31ee5b614284.jpg"/>
+</div>
+<div>
+<h2 class="text-sm font-bold text-gray-800">早安，张三</h2>
+<p class="text-[10px] text-gray-500">2026年4月18日 · 晴</p>
+</div>
+</div>
+<div class="flex gap-2">
+<div class="bg-white p-2 rounded-full shadow-sm">
+<iconify-icon class="text-orange-500" icon="lucide:bell" width="18"></iconify-icon>
+</div>
+<div class="bg-white p-2 rounded-full shadow-sm">
+<iconify-icon class="text-gray-400" icon="lucide:settings" width="18"></iconify-icon>
+</div>
+</div>
+</div>
+<!-- 内容滚动区 -->
+<div class="flex-1 overflow-y-auto hide-scrollbar px-5 pb-24">
+<!-- 核心功能入口 -->
+<div class="main-gradient rounded-3xl p-6 mt-4 shadow-lg relative overflow-hidden">
+<div class="relative z-10">
+<h1 class="text-white text-xl font-bold mb-1">AI 翻译宠物心声</h1>
+<p class="text-white/80 text-xs mb-4">上传照片或视频，读懂它的情绪</p>
+<div class="flex gap-3">
+<a class="bg-white text-orange-600 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2" href="result_detail.html">
+<iconify-icon icon="lucide:image"></iconify-icon> 开始分析
+                        </a>
+<button class="bg-black/10 text-white border border-white/30 px-4 py-2 rounded-full text-xs font-bold flex items-center gap-2">
+<iconify-icon icon="lucide:video"></iconify-icon> 录制动态
+                        </button>
+</div>
+</div>
+<iconify-icon class="absolute -right-4 -bottom-4 text-white/20" icon="ph:cat-fill" width="120"></iconify-icon>
+</div>
+<!-- 实时入口 -->
+<div class="grid grid-cols-2 gap-3 mt-4">
+<a class="bg-orange-100 p-4 rounded-2xl flex flex-col items-center gap-2 border border-orange-200" href="live_monitor.html">
+<div class="w-10 h-10 bg-orange-400 rounded-full flex items-center justify-center text-white shadow-md">
+<iconify-icon icon="lucide:camera" width="20"></iconify-icon>
+</div>
+<span class="text-xs font-bold text-orange-800">实时观察</span>
+</a>
+<a class="bg-blue-100 p-4 rounded-2xl flex flex-col items-center gap-2 border border-blue-200" href="ai_call.html">
+<div class="w-10 h-10 bg-blue-400 rounded-full flex items-center justify-center text-white shadow-md">
+<iconify-icon icon="lucide:phone-call" width="20"></iconify-icon>
+</div>
+<span class="text-xs font-bold text-blue-800">实时通话</span>
+</a>
+</div>
+<!-- 宠物健康简报 -->
+<div class="mt-6">
+<div class="flex justify-between items-center mb-3">
+<h3 class="font-bold text-gray-800">健康监测报告</h3>
+<a class="text-xs text-orange-500" href="pet_stats.html">查看全部</a>
+</div>
+<div class="bg-white rounded-2xl p-4 shadow-sm space-y-4">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-3">
+<img alt="Cat" class="w-10 h-10 rounded-lg" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/052b01e53a824512b694ca8b5345832f.jpg"/>
+<div>
+<p class="text-xs font-bold text-gray-800">布丁 (美短)</p>
+<p class="text-[10px] text-green-500">情绪稳定 · 89分</p>
+</div>
+</div>
+<div class="text-right">
+<p class="text-[10px] text-gray-400 text-right">上次检测</p>
+<p class="text-[10px] font-medium">10:24 AM</p>
+</div>
+</div>
+<div class="h-2 bg-gray-100 rounded-full overflow-hidden">
+<div class="h-full bg-green-400 w-[89%]"></div>
+</div>
+</div>
+</div>
+<!-- 历史记录 -->
+<div class="mt-6">
+<h3 class="font-bold text-gray-800 mb-3">历史分析</h3>
+<div class="space-y-3">
+<div class="bg-white p-3 rounded-xl flex gap-3 items-center">
+<img alt="History" class="w-12 h-12 rounded-lg object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/118ee7f1a32144e08d9b9a9de7fd8908.jpg"/>
+<div class="flex-1">
+<div class="flex justify-between">
+<span class="text-[10px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded">情绪：好奇</span>
+<span class="text-[10px] text-gray-400">昨天 18:30</span>
+</div>
+<p class="text-xs mt-1 text-gray-600 line-clamp-1">正在观察窗外的鸟，处于高度专注状态。</p>
+</div>
+</div>
+<div class="bg-white p-3 rounded-xl flex gap-3 items-center">
+<img alt="History" class="w-12 h-12 rounded-lg object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/118ee7f1a32144e08d9b9a9de7fd8908.jpg"/>
+<div class="flex-1">
+<div class="flex justify-between">
+<span class="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded">预警：焦虑</span>
+<span class="text-[10px] text-gray-400">04-16 14:20</span>
+</div>
+<p class="text-xs mt-1 text-gray-600 line-clamp-1">躲在床底不愿出来，可能受雷声惊吓。</p>
+</div>
+</div>
+<div class="bg-white p-3 rounded-xl flex gap-3 items-center">
+<img alt="History" class="w-12 h-12 rounded-lg object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/118ee7f1a32144e08d9b9a9de7fd8908.jpg"/>
+<div class="flex-1">
+<div class="flex justify-between">
+<span class="text-[10px] bg-blue-100 text-blue-600 px-2 py-0.5 rounded">情绪：放松</span>
+<span class="text-[10px] text-gray-400">04-15 21:00</span>
+</div>
+<p class="text-xs mt-1 text-gray-600 line-clamp-1">发出咕噜声，享受抚摸中。</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部导航 -->
+<div class="absolute bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-gray-100 px-6 py-3 flex justify-between items-center pb-8">
+<a class="flex flex-col items-center gap-1 text-orange-500" href="index.html">
+<iconify-icon icon="lucide:home" width="24"></iconify-icon>
+<span class="text-[10px] font-bold">首页</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-gray-400" href="live_monitor.html">
+<iconify-icon icon="lucide:camera" width="24"></iconify-icon>
+<span class="text-[10px]">观察</span>
+</a>
+<div class="relative -top-5">
+<div class="w-12 h-12 main-gradient rounded-full flex items-center justify-center text-white shadow-lg border-4 border-white">
+<iconify-icon icon="lucide:plus" width="28"></iconify-icon>
+</div>
+</div>
+<a class="flex flex-col items-center gap-1 text-gray-400" href="pet_stats.html">
+<iconify-icon icon="lucide:activity" width="24"></iconify-icon>
+<span class="text-[10px]">健康</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-gray-400" href="#">
+<iconify-icon icon="lucide:user" width="24"></iconify-icon>
+<span class="text-[10px]">我的</span>
+</a>
+</div>
+</div>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>树洞喵 - 情绪历史</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/echarts.min.5.4.3.js"></script>
+<style>
+        body { background-color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-container { width: 375px; height: 812px; background: #FFFDF0; border-radius: 40px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); position: relative; overflow: hidden; border: 8px solid #FFFFFF; }
+    </style>
+</head>
+<body>
+<div class="app-container flex flex-col">
+<header class="px-6 pt-12 pb-4 flex items-center gap-4">
+<a class="text-amber-900" href="index.html"><iconify-icon icon="ph:arrow-left-bold" width="24"></iconify-icon></a>
+<h1 class="text-xl font-bold text-amber-900">本喵的情绪档案</h1>
+</header>
+<main class="flex-1 overflow-y-auto px-6 pb-24">
+<!-- 日期选择 -->
+<div class="flex justify-between items-center bg-white rounded-2xl p-3 mb-6 shadow-sm border border-amber-100">
+<div class="flex flex-col">
+<span class="text-[10px] text-amber-700/50 uppercase">当前查看</span>
+<span class="text-sm font-bold text-amber-900">2026年04月18日</span>
+</div>
+<iconify-icon class="text-lime-600" icon="ph:calendar-blank-fill" width="24"></iconify-icon>
+</div>
+<!-- 数据图表 -->
+<section class="bg-white rounded-3xl p-4 mb-6 shadow-sm border border-amber-100">
+<h2 class="text-sm font-bold text-amber-900 mb-4 flex items-center gap-2">
+<iconify-icon class="text-lime-500" icon="ph:chart-line-up-fill"></iconify-icon>
+                    今日心情指数
+                </h2>
+<div class="w-full h-48" id="chart"></div>
+</section>
+<!-- 统计小方块 -->
+<div class="grid grid-cols-2 gap-4 mb-6">
+<div class="bg-lime-500 p-4 rounded-2xl text-white">
+<p class="text-[10px] opacity-80 mb-1">最快乐时刻</p>
+<p class="text-lg font-bold">10:30 AM</p>
+<div class="mt-2 text-[10px] bg-white/20 rounded-md p-1 inline-block">
+                        罐头时间喵！
+                    </div>
+</div>
+<div class="bg-amber-100 p-4 rounded-2xl">
+<p class="text-[10px] text-amber-800/60 mb-1">平均压力</p>
+<p class="text-lg font-bold text-amber-900">12%</p>
+<div class="mt-2 text-[10px] text-lime-700 font-bold">
+                        本喵很放松~
+                    </div>
+</div>
+</div>
+<!-- 时间轴 -->
+<h2 class="text-sm font-bold text-amber-900 mb-4">时间足迹</h2>
+<div class="space-y-6 relative before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-amber-100">
+<!-- 条目 1 -->
+<div class="relative pl-10">
+<div class="absolute left-0 top-1 w-6 h-6 bg-lime-500 rounded-full border-4 border-white shadow-sm z-10 flex items-center justify-center">
+<iconify-icon class="text-white" icon="ph:paw-print-fill" width="12"></iconify-icon>
+</div>
+<div class="bg-white p-3 rounded-2xl shadow-sm border border-amber-50">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-amber-900">兴奋不已 (85%)</span>
+<span class="text-[10px] text-amber-500">14:20</span>
+</div>
+<p class="text-[11px] text-amber-800/70">本喵在追逐那只可恶的激光笔，虽然没抓到，但运动量达标喵！</p>
+</div>
+</div>
+<!-- 条目 2 -->
+<div class="relative pl-10">
+<div class="absolute left-0 top-1 w-6 h-6 bg-amber-300 rounded-full border-4 border-white shadow-sm z-10 flex items-center justify-center">
+<iconify-icon class="text-white" icon="ph:paw-print-fill" width="12"></iconify-icon>
+</div>
+<div class="bg-white p-3 rounded-2xl shadow-sm border border-amber-50">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-amber-900">淡定/发呆 (40%)</span>
+<span class="text-[10px] text-amber-500">12:15</span>
+</div>
+<p class="text-[11px] text-amber-800/70">思考喵生意义的时刻，其实只是在等太阳晒到屁股喵~</p>
+</div>
+</div>
+<!-- 条目 3 -->
+<div class="relative pl-10">
+<div class="absolute left-0 top-1 w-6 h-6 bg-blue-400 rounded-full border-4 border-white shadow-sm z-10 flex items-center justify-center">
+<iconify-icon class="text-white" icon="ph:paw-print-fill" width="12"></iconify-icon>
+</div>
+<div class="bg-white p-3 rounded-2xl shadow-sm border border-amber-50">
+<div class="flex justify-between items-start mb-1">
+<span class="text-xs font-bold text-amber-900">有点忧郁 (15%)</span>
+<span class="text-[10px] text-amber-500">09:00</span>
+</div>
+<p class="text-[11px] text-amber-800/70">看到主人出门没带本喵，本喵觉得被全世界抛弃了喵...</p>
+</div>
+</div>
+</div>
+</main>
+<nav class="absolute bottom-0 w-full bg-white h-20 border-t border-amber-100 px-6 flex items-center justify-between rounded-t-[32px]">
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="index.html">
+<iconify-icon icon="ph:house" width="26"></iconify-icon>
+<span class="text-[10px]">主页</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="monitor.html">
+<iconify-icon icon="ph:video-camera" width="26"></iconify-icon>
+<span class="text-[10px]">监控</span>
+</a>
+<div class="w-14 h-14 bg-lime-500 rounded-full -mt-10 border-4 border-white flex items-center justify-center text-white">
+<iconify-icon icon="ph:scan-fill" width="28"></iconify-icon>
+</div>
+<a class="flex flex-col items-center gap-1 text-lime-600" href="history.html">
+<iconify-icon icon="ph:clock-counter-clockwise-fill" width="26"></iconify-icon>
+<span class="text-[10px] font-bold">历史</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="#">
+<iconify-icon icon="ph:gear-six" width="26"></iconify-icon>
+<span class="text-[10px]">设置</span>
+</a>
+</nav>
+</div>
+<script>
+        const chartDom = document.getElementById('chart');
+        const myChart = echarts.init(chartDom);
+        const option = {
+            grid: { top: 10, bottom: 20, left: 30, right: 10 },
+            xAxis: {
+                type: 'category',
+                data: ['08:00', '10:00', '12:00', '14:00', '16:00'],
+                axisLine: { show: false },
+                axisTick: { show: false },
+                axisLabel: { textStyle: { color: '#999', fontSize: 10 } }
+            },
+            yAxis: {
+                type: 'value',
+                splitLine: { lineStyle: { type: 'dashed', color: '#eee' } },
+                axisLabel: { show: false }
+            },
+            series: [{
+                data: [30, 85, 40, 75, 50],
+                type: 'line',
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 8,
+                itemStyle: { color: '#84cc16' },
+                lineStyle: { width: 4, color: '#84cc16' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(132, 204, 22, 0.4)' },
+                        { offset: 1, color: 'rgba(132, 204, 22, 0)' }
+                    ])
+                }
+            }]
+        };
+        myChart.setOption(option);
+    </script>
+</body>
+</html>

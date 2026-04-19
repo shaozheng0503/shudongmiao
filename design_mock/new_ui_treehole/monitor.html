@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>树洞喵 - 实时监控</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<style>
+        body { background-color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .app-container { width: 375px; height: 812px; background: #FFFDF0; border-radius: 40px; box-shadow: 0 20px 50px rgba(0,0,0,0.1); position: relative; overflow: hidden; border: 8px solid #FFFFFF; }
+        .monitor-view { height: 400px; background: #222; position: relative; }
+        .control-panel { background: white; border-top-left-radius: 32px; border-top-right-radius: 32px; margin-top: -30px; position: relative; z-index: 10; padding: 24px; flex: 1; }
+    </style>
+</head>
+<body>
+<div class="app-container flex flex-col">
+<!-- 视频流 -->
+<div class="monitor-view">
+<img alt="Live Stream" class="w-full h-full object-cover opacity-80" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/4127a8815f1b402bae030b8958ff0174.jpg"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="bg-white/20 backdrop-blur-sm p-4 rounded-full border border-white/30">
+<iconify-icon class="text-white" icon="ph:play-fill" width="48"></iconify-icon>
+</div>
+</div>
+<div class="absolute top-10 left-6 flex items-center gap-2">
+<a class="w-8 h-8 bg-black/30 rounded-full flex items-center justify-center text-white backdrop-blur-md" href="index.html">
+<iconify-icon icon="ph:caret-left-bold"></iconify-icon>
+</a>
+<span class="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded font-bold">LIVE</span>
+</div>
+<div class="absolute bottom-12 right-6 flex flex-col gap-3">
+<button class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur-md">
+<iconify-icon icon="ph:microphone-fill" width="20"></iconify-icon>
+</button>
+<button class="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-white backdrop-blur-md">
+<iconify-icon icon="ph:camera-plus-fill" width="20"></iconify-icon>
+</button>
+</div>
+</div>
+<!-- 控制区 -->
+<div class="control-panel">
+<div class="flex justify-between items-start mb-6">
+<div>
+<h1 class="text-xl font-bold text-amber-900">客厅的树洞摄像头</h1>
+<p class="text-xs text-amber-700/60 mt-1">当前状态：本喵正在打盹 💤</p>
+</div>
+<div class="flex items-center gap-1 bg-lime-100 px-2 py-1 rounded-lg">
+<iconify-icon class="text-lime-600" icon="ph:battery-charging-fill"></iconify-icon>
+<span class="text-[10px] font-bold text-lime-700">85%</span>
+</div>
+</div>
+<!-- 宠物切换 -->
+<div class="mb-8">
+<p class="text-sm font-bold text-amber-900 mb-3">切换查看：</p>
+<div class="flex gap-4">
+<div class="flex flex-col items-center gap-1">
+<div class="w-14 h-14 rounded-full border-4 border-lime-500 p-0.5">
+<img alt="Cat 1" class="w-full h-full rounded-full" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/514db24961ad4d4295377a7bfd4ef0c7.jpg"/>
+</div>
+<span class="text-[10px] font-bold text-lime-700">糯米(本喵)</span>
+</div>
+<div class="flex flex-col items-center gap-1 opacity-50">
+<div class="w-14 h-14 rounded-full border-4 border-transparent p-0.5 bg-gray-200">
+<img alt="Cat 2" class="w-full h-full rounded-full" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/d02a3e1e4a96440e888cc9b10c75c475.jpg"/>
+</div>
+<span class="text-[10px] font-bold text-amber-900">二蛋</span>
+</div>
+<button class="w-14 h-14 rounded-full border-2 border-dashed border-amber-200 flex items-center justify-center text-amber-300">
+<iconify-icon icon="ph:plus-bold" width="24"></iconify-icon>
+</button>
+</div>
+</div>
+<!-- AI 动态提醒 -->
+<div class="bg-amber-50 rounded-2xl p-4 border border-amber-100">
+<h3 class="text-sm font-bold text-amber-900 mb-3 flex items-center gap-2">
+<iconify-icon class="text-amber-500" icon="ph:sparkle-fill"></iconify-icon>
+                    AI 喵语分析
+                </h3>
+<div class="space-y-4">
+<div class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-white flex items-center justify-center text-lg">🥣</div>
+<div class="bg-white p-3 rounded-2xl rounded-tl-none flex-1 shadow-sm">
+<p class="text-xs text-amber-900 leading-relaxed">主人主人！本喵刚才去蹭了蹭猫碗，其实本喵并不是饿了，只是想让你陪本喵玩会儿喵~</p>
+</div>
+</div>
+<div class="flex gap-3 flex-row-reverse">
+<div class="w-8 h-8 rounded-full bg-lime-100 flex items-center justify-center text-lg">🧸</div>
+<div class="bg-lime-500 p-3 rounded-2xl rounded-tr-none flex-1 shadow-sm">
+<p class="text-xs text-white leading-relaxed">建议投喂：羽毛逗猫棒，消耗本喵多余的精力喵！</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- 底部导航 (简化) -->
+<nav class="absolute bottom-0 w-full bg-white h-20 border-t border-amber-100 px-6 flex items-center justify-between rounded-t-[32px]">
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="index.html">
+<iconify-icon icon="ph:house" width="26"></iconify-icon>
+<span class="text-[10px]">主页</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-lime-600" href="monitor.html">
+<iconify-icon icon="ph:video-camera-fill" width="26"></iconify-icon>
+<span class="text-[10px] font-bold">监控</span>
+</a>
+<div class="w-14 h-14 bg-lime-500 rounded-full -mt-10 border-4 border-white flex items-center justify-center text-white">
+<iconify-icon icon="ph:scan-fill" width="28"></iconify-icon>
+</div>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="history.html">
+<iconify-icon icon="ph:clock-counter-clockwise" width="26"></iconify-icon>
+<span class="text-[10px]">历史</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="#">
+<iconify-icon icon="ph:gear-six" width="26"></iconify-icon>
+<span class="text-[10px]">设置</span>
+</a>
+</nav>
+</div>
+</body>
+</html>

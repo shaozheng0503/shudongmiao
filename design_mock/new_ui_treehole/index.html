@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>树洞喵 - 首页</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<style>
+        @font-face {
+            font-family: 'Quicksand';
+            src: url('https://fonts.googleapis.com/css2?family=Quicksand:wght@500;700&display=swap');
+        }
+        body {
+            font-family: 'Quicksand', "Microsoft YaHei", sans-serif;
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .app-container {
+            width: 375px;
+            height: 812px;
+            background: #FFFDF0; /* 暖黄色底色 */
+            border-radius: 40px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+            position: relative;
+            overflow: hidden;
+            border: 8px solid #FFFFFF;
+        }
+        .tree-hollow-bg {
+            background: radial-gradient(circle at center, #E8D5B5 0%, #FFFDF0 70%);
+        }
+        .cat-btn-clip {
+            clip-path: path('M187.5 50C150 50 120 80 120 120C120 130 122 140 125 150C100 160 80 190 80 230C80 300 130 350 187.5 350C245 350 295 300 295 230C295 190 275 160 250 150C253 140 255 130 255 120C255 80 225 50 187.5 50Z');
+        }
+        .custom-shadow {
+            box-shadow: 0 8px 0px #D9CCAF;
+        }
+    </style>
+</head>
+<body>
+<div class="app-container flex flex-col">
+<!-- 顶部导航 -->
+<header class="px-6 pt-12 pb-4 flex justify-between items-center bg-white/50 backdrop-blur-sm">
+<div class="flex items-center gap-2">
+<div class="w-10 h-10 bg-lime-500 rounded-full flex items-center justify-center text-white shadow-lg">
+<iconify-icon icon="mdi:cat" width="24"></iconify-icon>
+</div>
+<h1 class="text-xl font-bold text-amber-900 tracking-wider">树洞喵</h1>
+</div>
+<div class="relative">
+<img alt="User Avatar" class="w-10 h-10 rounded-full border-2 border-lime-500 p-0.5" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/a157f6b5374b4d5cb9a77a1704bcf9a5.jpg"/>
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 border-2 border-white rounded-full"></div>
+</div>
+</header>
+<!-- 主内容区 (滚动) -->
+<main class="flex-1 overflow-y-auto pb-24 px-5">
+<!-- 问候语 -->
+<div class="mt-4 mb-6">
+<p class="text-amber-800 text-lg font-medium">喵~ 铲屎的，</p>
+<p class="text-amber-900 text-2xl font-bold">本喵现在心情美滋滋！✨</p>
+</div>
+<!-- 核心：大相机按钮 -->
+<section class="relative py-8 flex flex-col items-center justify-center tree-hollow-bg rounded-[40px] mb-6 border-2 border-dashed border-amber-200">
+<div class="absolute top-4 left-4 text-lime-600 opacity-30">
+<iconify-icon icon="ph:leaf-fill" width="32"></iconify-icon>
+</div>
+<div class="absolute bottom-4 right-4 text-lime-600 opacity-30 rotate-180">
+<iconify-icon icon="ph:leaf-fill" width="32"></iconify-icon>
+</div>
+<p class="text-amber-800 text-sm mb-4 font-bold flex items-center gap-1">
+<iconify-icon icon="ph:paw-print-fill"></iconify-icon> 别让本喵等太久喵！
+                </p>
+<button class="w-48 h-48 bg-lime-500 rounded-full shadow-2xl flex flex-col items-center justify-center border-[6px] border-white active:scale-95 transition-transform">
+<iconify-icon class="text-white mb-2" icon="ph:camera-fill" width="64"></iconify-icon>
+<span class="text-white font-bold text-lg">即刻识喵</span>
+</button>
+<div class="mt-6 flex gap-3">
+<span class="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold"># AI 读脸中</span>
+<span class="bg-amber-100 text-amber-700 px-3 py-1 rounded-full text-xs font-bold"># 捕捉小情绪</span>
+</div>
+</section>
+<!-- 视频监控入口 -->
+<section class="bg-white rounded-3xl p-4 mb-6 shadow-sm border border-amber-100">
+<div class="flex justify-between items-center mb-3">
+<h2 class="font-bold text-amber-900 flex items-center gap-2">
+<iconify-icon class="text-lime-600" icon="ph:video-camera-fill"></iconify-icon>
+                        偷看本喵 (实时监控)
+                    </h2>
+<a class="text-xs text-lime-600 font-bold" href="monitor.html">查看全部 &gt;</a>
+</div>
+<div class="relative h-40 bg-gray-200 rounded-2xl overflow-hidden group">
+<img alt="Cat Sleeping" class="w-full h-full object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/eb4417b6b9a54e2b98e95f4279316600.jpg"/>
+<div class="absolute top-2 left-2 bg-black/40 backdrop-blur-md text-white text-[10px] px-2 py-1 rounded-md flex items-center gap-1">
+<span class="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse"></span> REC 14:23
+                    </div>
+<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/20">
+<iconify-icon class="text-white" icon="ph:play-circle-fill" width="48"></iconify-icon>
+</div>
+</div>
+<p class="mt-3 text-xs text-amber-700/70 italic">本喵正在阳台晒太阳，看起来很安逸喵~</p>
+</section>
+<!-- 功能网格 -->
+<div class="grid grid-cols-2 gap-4 mb-6">
+<!-- 健康警示 -->
+<a class="bg-red-50 p-4 rounded-3xl border border-red-100 flex flex-col gap-2" href="health.html">
+<div class="w-10 h-10 bg-red-100 rounded-2xl flex items-center justify-center text-red-500">
+<iconify-icon icon="ph:heartbeat-fill" width="24"></iconify-icon>
+</div>
+<div>
+<p class="font-bold text-red-900 text-sm">健康预警</p>
+<p class="text-[10px] text-red-700/70">本喵最近喝水少喵...</p>
+</div>
+</a>
+<!-- 多宠对比 -->
+<div class="bg-blue-50 p-4 rounded-3xl border border-blue-100 flex flex-col gap-2">
+<div class="w-10 h-10 bg-blue-100 rounded-2xl flex items-center justify-center text-blue-500">
+<iconify-icon icon="ph:users-three-fill" width="24"></iconify-icon>
+</div>
+<div>
+<p class="font-bold text-blue-900 text-sm">谁最得宠</p>
+<p class="text-[10px] text-blue-700/70">对比本喵和二蛋的心情</p>
+</div>
+</div>
+</div>
+<!-- 最近小情绪 -->
+<section class="bg-lime-50 rounded-3xl p-4 border border-lime-100">
+<div class="flex justify-between items-center mb-4">
+<h2 class="font-bold text-amber-900 text-sm">本喵的往日快乐</h2>
+<a class="text-xs text-lime-700" href="history.html">查看历史记录</a>
+</div>
+<div class="space-y-3">
+<div class="flex items-center gap-3 bg-white/60 p-2 rounded-xl">
+<div class="w-8 h-8 rounded-lg bg-yellow-200 flex items-center justify-center">😸</div>
+<div class="flex-1">
+<p class="text-xs font-bold text-amber-900">非常兴奋</p>
+<p class="text-[10px] text-amber-700/60">2026-04-18 10:30</p>
+</div>
+<iconify-icon class="text-amber-300" icon="ph:caret-right"></iconify-icon>
+</div>
+<div class="flex items-center gap-3 bg-white/60 p-2 rounded-xl">
+<div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">😴</div>
+<div class="flex-1">
+<p class="text-xs font-bold text-amber-900">困倦如山倒</p>
+<p class="text-[10px] text-amber-700/60">2026-04-17 22:15</p>
+</div>
+<iconify-icon class="text-amber-300" icon="ph:caret-right"></iconify-icon>
+</div>
+</div>
+</section>
+</main>
+<!-- 底部导航 -->
+<nav class="absolute bottom-0 w-full bg-white h-20 border-t border-amber-100 px-6 flex items-center justify-between rounded-t-[32px] shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+<a class="flex flex-col items-center gap-1 text-lime-600" href="index.html">
+<iconify-icon icon="ph:house-fill" width="26"></iconify-icon>
+<span class="text-[10px] font-bold">主页</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="monitor.html">
+<iconify-icon icon="ph:video-camera" width="26"></iconify-icon>
+<span class="text-[10px]">监控</span>
+</a>
+<div class="w-14 h-14 bg-lime-500 rounded-full -mt-10 border-4 border-white flex items-center justify-center text-white shadow-lg shadow-lime-200">
+<iconify-icon icon="ph:scan-fill" width="28"></iconify-icon>
+</div>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="history.html">
+<iconify-icon icon="ph:clock-counter-clockwise" width="26"></iconify-icon>
+<span class="text-[10px]">历史</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-amber-900/40" href="#">
+<iconify-icon icon="ph:gear-six" width="26"></iconify-icon>
+<span class="text-[10px]">设置</span>
+</a>
+</nav>
+</div>
+</body>
+</html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CatAgentApp - 实时通话</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<style>
+        .app-container { width: 375px; height: 812px; background: #1a1a1a; position: relative; overflow: hidden; border: 8px solid #333; border-radius: 40px; margin: 20px auto; }
+        .debug-panel { background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); }
+        .message-bubble { position: relative; max-width: 80%; }
+        .message-bubble::after { content: ''; position: absolute; width: 0; height: 0; border: 8px solid transparent; }
+        .ai-bubble::after { left: -12px; top: 10px; border-right-color: rgba(255, 159, 67, 0.9); }
+        .user-bubble::after { right: -12px; top: 10px; border-left-color: rgba(255, 255, 255, 0.2); }
+    </style>
+</head>
+<body class="bg-gray-100">
+<div class="app-container text-white">
+<!-- 满屏视频背景 -->
+<div class="absolute inset-0">
+<img alt="Pet Video" class="w-full h-full object-cover opacity-60" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/b301aac0fc4f4521912cac2ca67d755d.jpg"/>
+</div>
+<!-- 悬浮调试面板 (左侧) -->
+<div class="absolute left-4 top-24 z-20 w-32 space-y-2">
+<div class="debug-panel p-2 rounded-lg border border-white/10">
+<p class="text-[8px] text-gray-400 uppercase tracking-tighter">AI Confidence</p>
+<div class="flex items-center gap-1">
+<div class="flex-1 h-1 bg-gray-700 rounded-full overflow-hidden">
+<div class="h-full bg-orange-500 w-[96%]"></div>
+</div>
+<span class="text-[8px] font-mono">96%</span>
+</div>
+</div>
+<div class="debug-panel p-2 rounded-lg border border-white/10">
+<p class="text-[8px] text-gray-400 uppercase tracking-tighter">Stress Level</p>
+<p class="text-xs font-mono text-green-400 font-bold">LOW (12)</p>
+</div>
+<div class="debug-panel p-2 rounded-lg border border-white/10">
+<p class="text-[8px] text-gray-400 uppercase tracking-tighter">Heart Rate</p>
+<p class="text-xs font-mono text-orange-400 font-bold">110 BPM</p>
+</div>
+</div>
+<!-- 自己的摄像头小窗 -->
+<div class="absolute right-4 top-12 w-24 h-36 rounded-2xl overflow-hidden border-2 border-white/30 shadow-xl z-20">
+<img alt="User Camera" class="w-full h-full object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/25f862f9eb4d4aa2823dc0b0012c46d7.jpg"/>
+</div>
+<!-- 对话流内容 -->
+<div class="absolute inset-x-0 bottom-32 px-4 space-y-4 z-10 flex flex-col items-start overflow-y-auto max-h-[40%] hide-scrollbar">
+<!-- AI翻译猫咪 -->
+<div class="flex items-start gap-2 w-full">
+<div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center flex-shrink-0">
+<iconify-icon icon="ph:cat-bold"></iconify-icon>
+</div>
+<div class="ai-bubble bg-orange-500/90 p-3 rounded-2xl rounded-tl-none text-xs leading-relaxed shadow-lg">
+<span class="italic text-[10px] opacity-70 block mb-1">喵呜～喵呜～</span>
+                    “我现在觉得很饿，也很想让你抱抱我。”
+                </div>
+</div>
+<!-- 用户回复 -->
+<div class="flex items-start gap-2 w-full flex-row-reverse">
+<div class="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+<iconify-icon icon="lucide:user"></iconify-icon>
+</div>
+<div class="user-bubble bg-white/20 backdrop-blur-md p-3 rounded-2xl rounded-tr-none text-xs leading-relaxed border border-white/10 shadow-lg">
+                    好的布丁，等我回家就给你开罐头，再坚持一下下哦。
+                </div>
+</div>
+</div>
+<!-- 底部呼叫控制 -->
+<div class="absolute bottom-10 left-0 right-0 z-20 px-8 flex justify-between items-center">
+<button class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
+<iconify-icon icon="lucide:mic-off" width="20"></iconify-icon>
+</button>
+<a class="w-16 h-16 bg-red-600 rounded-full flex items-center justify-center shadow-2xl" href="index.html">
+<iconify-icon icon="lucide:phone-off" width="28"></iconify-icon>
+</a>
+<button class="w-12 h-12 bg-white/10 backdrop-blur-md rounded-full flex items-center justify-center border border-white/20">
+<iconify-icon icon="lucide:video-off" width="20"></iconify-icon>
+</button>
+</div>
+</div>
+</body>
+</html>

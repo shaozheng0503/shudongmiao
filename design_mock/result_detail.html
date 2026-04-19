@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>CatAgentApp - 分析结果</title>
+<script src="https://modao.cc/agent-py/static/source/js/tailwindcss.3.4.3.js"></script>
+<script src="https://modao.cc/agent-py/static/source/js/iconify-icon.min.1.0.7.js"></script>
+<style>
+        .app-container { width: 375px; height: 812px; background: #FAF9F6; position: relative; overflow: hidden; border: 8px solid #333; border-radius: 40px; margin: 20px auto; }
+        .marker { position: absolute; width: 14px; height: 14px; background: #FF9F43; border: 2px solid white; border-radius: 50%; box-shadow: 0 0 10px rgba(255,159,67,0.8); cursor: pointer; animation: pulse-dot 1.5s infinite; }
+        @keyframes pulse-dot { 0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,159,67,0.7); } 70% { transform: scale(1.2); box-shadow: 0 0 0 10px rgba(255,159,67,0); } 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,159,67,0); } }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body class="bg-gray-100">
+<div class="app-container flex flex-col">
+<!-- 顶部导航 -->
+<div class="px-5 pt-12 pb-4 flex items-center gap-4">
+<a class="text-gray-400" href="index.html">
+<iconify-icon icon="lucide:arrow-left" width="24"></iconify-icon>
+</a>
+<h2 class="text-lg font-bold text-gray-800">AI 智能识别结果</h2>
+</div>
+<div class="flex-1 overflow-y-auto hide-scrollbar px-5 pb-10">
+<!-- 视觉化证据标注区 -->
+<div class="relative rounded-3xl overflow-hidden shadow-xl mb-6">
+<img alt="Analysis Target" class="w-full h-72 object-cover" src="https://modao.cc/agent-py/media/generated_images/2026-04-18/f465aebaa7594103929b13edbd0d1360.jpg"/>
+<!-- 打点标注 -->
+<div class="marker top-1/4 left-1/3" title="耳位分析"></div>
+<div class="marker top-1/2 right-1/4" title="尾巴姿态"></div>
+<div class="marker bottom-1/4 left-1/2" title="瞳孔状态"></div>
+<div class="absolute bottom-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] text-white flex items-center gap-2">
+<iconify-icon icon="lucide:info" width="14"></iconify-icon>
+                    点击橙色标记查看 AI 分析证据
+                </div>
+</div>
+<!-- 分析摘要卡片 -->
+<div class="bg-white rounded-3xl p-6 shadow-sm mb-6 border border-orange-100">
+<div class="flex justify-between items-start mb-4">
+<div>
+<span class="text-[10px] font-bold text-orange-500 uppercase tracking-widest">当前情绪翻译</span>
+<h1 class="text-2xl font-bold text-gray-800">非常愉悦 &amp; 好奇</h1>
+</div>
+<div class="w-12 h-12 bg-orange-50 rounded-full flex items-center justify-center text-orange-500">
+<iconify-icon icon="mdi:emoticon-happy-outline" width="32"></iconify-icon>
+</div>
+</div>
+<div class="space-y-4">
+<div class="flex items-center gap-3">
+<div class="w-1 h-10 bg-orange-200 rounded-full"></div>
+<p class="text-sm text-gray-600 leading-relaxed">基于耳尖微向前倾（置信度 94%）和尾巴缓缓摆动（置信度 89%）的综合判断。</p>
+</div>
+</div>
+</div>
+<!-- 健康预警关联模块 -->
+<div class="bg-red-50 border border-red-100 rounded-3xl p-5 mb-6">
+<div class="flex items-center gap-2 mb-3 text-red-600">
+<iconify-icon icon="lucide:alert-triangle" width="20"></iconify-icon>
+<h3 class="font-bold">健康小贴士</h3>
+</div>
+<p class="text-xs text-gray-700 leading-relaxed mb-4">AI 观察到宠物瞳孔收缩速度较快，建议排查以下可能原因：</p>
+<div class="grid grid-cols-2 gap-3">
+<div class="bg-white p-3 rounded-2xl border border-red-50">
+<p class="text-[10px] text-gray-400 mb-1">环境因素</p>
+<p class="text-[11px] font-bold text-gray-800">室内光线过强</p>
+</div>
+<div class="bg-white p-3 rounded-2xl border border-red-50">
+<p class="text-[10px] text-gray-400 mb-1">健康因素</p>
+<p class="text-[11px] font-bold text-gray-800">眼部炎症轻度预警</p>
+</div>
+</div>
+<button class="w-full mt-4 bg-red-600 text-white py-2.5 rounded-xl text-xs font-bold shadow-md shadow-red-200">
+                    咨询在线宠物医生
+                </button>
+</div>
+<!-- 专家指导建议 -->
+<div class="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+<h3 class="font-bold text-gray-800 mb-4">AI 科学养宠建议</h3>
+<ul class="space-y-4">
+<li class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-blue-500 flex-shrink-0">
+<iconify-icon icon="lucide:utensils" width="18"></iconify-icon>
+</div>
+<div>
+<p class="text-xs font-bold text-gray-800">适当增加零食互动</p>
+<p class="text-[10px] text-gray-500 mt-1">当前它的情绪非常适合进行简单的技能训练，会有很高的配合度。</p>
+</div>
+</li>
+<li class="flex gap-3">
+<div class="w-8 h-8 rounded-full bg-green-50 flex items-center justify-center text-green-500 flex-shrink-0">
+<iconify-icon icon="lucide:sun" width="18"></iconify-icon>
+</div>
+<div>
+<p class="text-xs font-bold text-gray-800">保持环境稳定性</p>
+<p class="text-[10px] text-gray-500 mt-1">目前的心律显示其非常舒适，建议近期保持家居布局，避免噪音惊扰。</p>
+</div>
+</li>
+</ul>
+</div>
+</div>
+<!-- 操作按钮 -->
+<div class="p-6 bg-white/80 backdrop-blur-md border-t border-gray-100 flex gap-4 pb-10">
+<button class="flex-1 bg-gray-100 text-gray-600 py-3 rounded-2xl text-sm font-bold">保存到档案</button>
+<button class="flex-1 bg-orange-500 text-white py-3 rounded-2xl text-sm font-bold shadow-lg shadow-orange-200">继续追问 AI</button>
+</div>
+</div>
+</body>
+</html>

@@ -218,6 +218,44 @@ def test_response_parser_downgrades_high_risk_without_visual_evidence() -> None:
     assert "visual_evidence_weak" in parsed.urgent_flags
 
 
+def test_response_parser_downgrades_high_risk_when_dual_evidence_missing() -> None:
+    raw = """
+    {
+      "summary": "检测到疑似疼痛姿态",
+      "emotion_assessment": {"primary": "pain_sign", "confidence": 0.88, "signals": ["弓背"]},
+      "health_risk_assessment": {"level": "high", "score": 0.82, "triggers": ["疼痛体态"], "reason": "模型判断高风险"},
+      "evidence": {"visual": ["弓背姿态"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": ["尽快处理"],
+      "urgent_flags": ["gait_issue"],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-dual-gate")
+    assert parsed.health_risk_assessment.level == "medium"
+    assert "risk_dual_evidence_missing" in parsed.health_risk_assessment.triggers
+
+
+def test_response_parser_marks_low_quality_frame_as_unknown() -> None:
+    raw = """
+    {
+      "summary": "画面模糊且反光，难判断",
+      "emotion_assessment": {"primary": "pain_sign", "confidence": 0.8, "signals": ["疑似弓背"]},
+      "health_risk_assessment": {"level": "high", "score": 0.85, "triggers": ["异常姿态"], "reason": "疑似疼痛"},
+      "evidence": {"visual": ["画面过暗且模糊"], "textual": ["用户称状态一般"], "knowledge_refs": []},
+      "cat_target_box": {"x": 0.1, "y": 0.1, "width": 0.3, "height": 0.4, "confidence": 0.3},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-low-quality")
+    assert parsed.emotion_assessment.primary == "unknown"
+    assert "low_quality_frame" in parsed.urgent_flags
+    assert parsed.health_risk_assessment.level == "medium"
+
+
 def test_response_parser_normalizes_chinese_positive_emotions() -> None:
     raw = """
     {
@@ -258,3 +296,89 @@ def test_response_parser_normalizes_primary_in_partial_extract() -> None:
     """
     parsed = response_parser.parse(raw, session_id="session-partial-relaxed")
     assert parsed.emotion_assessment.primary == "relaxed"
+
+
+def test_response_parser_forces_no_cat_when_cat_evidence_missing() -> None:
+    raw = """
+    {
+      "summary": "画面里有个玩具在桌面上",
+      "emotion_assessment": {"primary": "stress_alert", "confidence": 0.64, "signals": ["画面主体静止"]},
+      "health_risk_assessment": {"level": "medium", "score": 0.45, "triggers": [], "reason": "疑似不适"},
+      "evidence": {"visual": ["主体轮廓不清"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-missing-cat-evidence")
+    assert parsed.emotion_assessment.primary == "no_cat"
+    assert "no_cat_detected" in parsed.urgent_flags
+
+
+def test_response_parser_normalizes_excited_alias() -> None:
+    raw = """
+    {
+      "summary": "本喵好兴奋",
+      "emotion_assessment": {"primary": "兴奋", "confidence": 0.8, "signals": ["快速走动"]},
+      "health_risk_assessment": {"level": "low", "score": 0.2, "triggers": [], "reason": "状态稳定"},
+      "evidence": {"visual": ["快速走动"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-excited")
+    assert parsed.emotion_assessment.primary == "excited"
+
+
+def test_response_parser_normalizes_confused_alias() -> None:
+    raw = """
+    {
+      "summary": "本喵有点疑惑",
+      "emotion_assessment": {"primary": "疑惑", "confidence": 0.71, "signals": ["反复张望"]},
+      "health_risk_assessment": {"level": "low", "score": 0.2, "triggers": [], "reason": "状态稳定"},
+      "evidence": {"visual": ["反复张望"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-confused")
+    assert parsed.emotion_assessment.primary == "confused"
+
+
+def test_response_parser_refines_emotion_by_visual_cues() -> None:
+    raw = """
+    {
+      "summary": "本喵在窗边反复张望和嗅闻",
+      "emotion_assessment": {"primary": "relaxed", "confidence": 0.55, "signals": ["反复张望", "嗅闻"]},
+      "health_risk_assessment": {"level": "low", "score": 0.2, "triggers": [], "reason": "状态稳定"},
+      "evidence": {"visual": ["反复张望", "嗅闻"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-emotion-refine")
+    assert parsed.emotion_assessment.primary in {"curious", "confused"}
+
+
+def test_response_parser_should_not_map_negative_happy_to_happy() -> None:
+    raw = """
+    {
+      "summary": "本喵看起来不开心",
+      "emotion_assessment": {"primary": "不开心", "confidence": 0.72, "signals": ["低头", "无互动"]},
+      "health_risk_assessment": {"level": "low", "score": 0.3, "triggers": [], "reason": "状态偏低"},
+      "evidence": {"visual": ["低头", "无互动"], "textual": [], "knowledge_refs": []},
+      "care_suggestions": [],
+      "urgent_flags": [],
+      "followup_questions": [],
+      "disclaimer": "本结果仅用于风险提示与照护建议，不构成医疗诊断。"
+    }
+    """
+    parsed = response_parser.parse(raw, session_id="session-not-happy")
+    assert parsed.emotion_assessment.primary != "happy"

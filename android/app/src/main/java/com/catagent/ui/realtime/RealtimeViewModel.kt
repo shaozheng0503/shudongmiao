@@ -30,6 +30,7 @@ data class RealtimeUiState(
     val catTargetHint: String = "等待识别猫目标",
     val statusText: String = "等待开始实时观察",
     val consecutiveNoCatCount: Int = 0,
+    val switchingTarget: Boolean = false,
     val error: String? = null,
 )
 
@@ -58,14 +59,16 @@ class RealtimeViewModel(
                 statusText = "实时观察中...",
                 catTargetStatus = CatTargetStatus.UNKNOWN,
                 catTargetHint = "实时观察中，等待首帧结果",
+                switchingTarget = false,
             )
             while (true) {
                 runCatching {
                     _uiState.value = _uiState.value.copy(
                         loading = true,
-                        statusText = "抓帧分析中...",
+                        statusText = "正在识别中...",
                         catTargetStatus = CatTargetStatus.UNKNOWN,
                         catTargetHint = "正在识别猫目标...",
+                        switchingTarget = false,
                     )
                     val frameUri = captureFrame()
                     repository.analyzeRealtimeFrame(
@@ -82,6 +85,7 @@ class RealtimeViewModel(
                         loading = false,
                         statusText = "实时观察失败",
                         catTargetHint = "识别失败，请重试",
+                        switchingTarget = false,
                         error = throwable.toUserFacingApiMessage("实时观察失败"),
                     )
                 }
@@ -100,9 +104,10 @@ class RealtimeViewModel(
             runCatching {
                 _uiState.value = _uiState.value.copy(
                     loading = true,
-                    statusText = "手动抓帧分析中...",
+                    statusText = "正在识别中...",
                     catTargetStatus = CatTargetStatus.UNKNOWN,
                     catTargetHint = "正在识别猫目标...",
+                    switchingTarget = false,
                 )
                 val frameUri = captureFrame()
                 repository.analyzeRealtimeFrame(
@@ -117,8 +122,9 @@ class RealtimeViewModel(
             }.onFailure { throwable ->
                 _uiState.value = _uiState.value.copy(
                     loading = false,
-                    statusText = "手动抓帧失败",
+                    statusText = "识别失败，请重试",
                     catTargetHint = "识别失败，请重试",
+                    switchingTarget = false,
                     error = throwable.toUserFacingApiMessage("手动抓帧失败"),
                 )
             }
@@ -138,6 +144,7 @@ class RealtimeViewModel(
             statusText = "实时观察已停止",
             catTargetStatus = CatTargetStatus.UNKNOWN,
             catTargetHint = "实时观察已停止",
+            switchingTarget = false,
         )
     }
 
@@ -147,6 +154,8 @@ class RealtimeViewModel(
     }
 
     private fun applyResponse(response: AnalyzeResponse) {
+        val current = _uiState.value
+        val modelBusy = response.urgent_flags.contains("model_service_unavailable")
         val isNoCat = response.urgent_flags.contains("no_cat_detected") || response.emotion_assessment.primary == "no_cat"
         val signature = buildString {
             append(response.emotion_assessment.primary)
@@ -156,11 +165,24 @@ class RealtimeViewModel(
             append(response.summary)
         }
 
+        if (modelBusy) {
+            _uiState.value = current.copy(
+                loading = false,
+                sessionId = response.session_id,
+                statusText = "当前网络较忙，暂未拿到新一帧结果",
+                catTargetStatus = CatTargetStatus.UNKNOWN,
+                catTargetHint = "结果保持上一帧，请稍候重试",
+                switchingTarget = false,
+                error = null,
+            )
+            return
+        }
+
         if (isNoCat) {
             pendingSignature = null
             pendingCount = 0
-            val nextNoCatCount = _uiState.value.consecutiveNoCatCount + 1
-            _uiState.value = _uiState.value.copy(
+            val nextNoCatCount = current.consecutiveNoCatCount + 1
+            _uiState.value = current.copy(
                 loading = false,
                 latestResponse = response,
                 sessionId = response.session_id,
@@ -171,8 +193,9 @@ class RealtimeViewModel(
                 },
                 catTargetStatus = CatTargetStatus.NOT_DETECTED,
                 catTargetHint = "未检测到猫，请对准猫咪后重试",
-                intervalMillis = if (nextNoCatCount >= 3) 4200L else _uiState.value.intervalMillis,
+                intervalMillis = if (nextNoCatCount >= 3) 4200L else current.intervalMillis,
                 consecutiveNoCatCount = nextNoCatCount,
+                switchingTarget = false,
                 error = null,
             )
             return
@@ -185,28 +208,44 @@ class RealtimeViewModel(
             pendingCount = 1
         }
 
-        if (pendingCount >= 2 || _uiState.value.latestResponse == null) {
+        val latest = current.latestResponse
+        val hasStrongEvidence = response.evidence.visual.isNotEmpty() &&
+            ((response.cat_target_box?.confidence ?: 0.0) >= 0.55 || response.emotion_assessment.confidence >= 0.68)
+        val targetChanged = latest?.let {
+            it.emotion_assessment.primary != response.emotion_assessment.primary ||
+                it.health_risk_assessment.level != response.health_risk_assessment.level
+        } ?: false
+        val shouldFastSwitch = latest != null && targetChanged && hasStrongEvidence
+
+        if (pendingCount >= 2 || latest == null || shouldFastSwitch) {
             val hasBox = response.cat_target_box != null
-            _uiState.value = _uiState.value.copy(
+            _uiState.value = current.copy(
                 loading = false,
                 latestResponse = response,
                 sessionId = response.session_id,
-                statusText = "最近一次分析已更新",
+                statusText = if (shouldFastSwitch) "已快速切换到新目标结果" else "最近一次分析已更新",
                 catTargetStatus = CatTargetStatus.DETECTED,
                 catTargetHint = if (hasBox) "已检测到猫，目标框已更新" else "已检测到猫，已显示参考框",
-                intervalMillis = if (_uiState.value.consecutiveNoCatCount >= 3) 2500L else _uiState.value.intervalMillis,
+                intervalMillis = if (current.consecutiveNoCatCount >= 3) 2500L else current.intervalMillis,
                 consecutiveNoCatCount = 0,
+                switchingTarget = false,
                 error = null,
             )
         } else {
-            _uiState.value = _uiState.value.copy(
+            val switching = targetChanged
+            _uiState.value = current.copy(
                 loading = false,
                 sessionId = response.session_id,
-                statusText = "结果确认中...",
-                catTargetStatus = CatTargetStatus.DETECTED,
-                catTargetHint = "已检测到猫，正在确认结果稳定性",
-                intervalMillis = if (_uiState.value.consecutiveNoCatCount >= 3) 2500L else _uiState.value.intervalMillis,
+                statusText = if (switching) "检测到新目标，正在切换结果..." else "结果确认中...",
+                catTargetStatus = if (switching) CatTargetStatus.UNKNOWN else CatTargetStatus.DETECTED,
+                catTargetHint = if (switching) {
+                    "新目标信号已出现，正在等待稳定后替换"
+                } else {
+                    "已检测到猫，正在确认结果稳定性"
+                },
+                intervalMillis = if (current.consecutiveNoCatCount >= 3) 2500L else current.intervalMillis,
                 consecutiveNoCatCount = 0,
+                switchingTarget = switching,
                 error = null,
             )
         }

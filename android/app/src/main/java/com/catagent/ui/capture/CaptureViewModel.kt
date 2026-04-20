@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.catagent.data.model.AnalyzeResponse
 import com.catagent.data.network.CatAgentRepository
 import com.catagent.data.network.toUserFacingApiMessage
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,8 @@ class CaptureViewModel(
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(CaptureUiState())
     val uiState: StateFlow<CaptureUiState> = _uiState.asStateFlow()
+    private var submitJob: Job? = null
+    private var submitSeq: Long = 0
 
     fun updateText(text: String) {
         _uiState.value = _uiState.value.copy(inputText = text)
@@ -71,8 +75,15 @@ class CaptureViewModel(
             return
         }
 
-        viewModelScope.launch {
-            _uiState.value = current.copy(loading = true, error = null)
+        submitJob?.cancel()
+        val requestSeq = ++submitSeq
+        submitJob = viewModelScope.launch {
+            // 新请求开始时先清空旧结果，避免“上一次结论停留过久”。
+            _uiState.value = current.copy(
+                loading = true,
+                error = null,
+                result = null,
+            )
             runCatching {
                 repository.analyze(
                     contentResolver = contentResolver,
@@ -83,12 +94,18 @@ class CaptureViewModel(
                     sessionId = current.sessionId,
                 )
             }.onSuccess { response ->
+                if (requestSeq != submitSeq) {
+                    return@onSuccess
+                }
                 _uiState.value = _uiState.value.copy(
                     loading = false,
                     result = response,
                     sessionId = response.session_id,
                 )
             }.onFailure { throwable ->
+                if (throwable is CancellationException || requestSeq != submitSeq) {
+                    return@onFailure
+                }
                 _uiState.value = _uiState.value.copy(
                     loading = false,
                     error = throwable.toUserFacingApiMessage("提交失败"),

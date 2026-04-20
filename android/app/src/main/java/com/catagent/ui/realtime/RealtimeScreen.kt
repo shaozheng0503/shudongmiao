@@ -38,11 +38,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -411,10 +411,6 @@ fun RealtimeScreen(
                 ) {
                     LiveTag("目标", if (uiState.catTargetStatus == CatTargetStatus.DETECTED) "已锁定猫咪" else "等待识别")
                     LiveTag("状态", uiState.latestResponse?.emotion_assessment?.primary ?: "分析中")
-                    LiveTag(
-                        "置信度",
-                        "${((uiState.latestResponse?.emotion_assessment?.confidence ?: 0.0) * 100).toInt()}%",
-                    )
                 }
             }
 
@@ -446,6 +442,13 @@ fun RealtimeScreen(
                         )
                         uiState.latestResponse?.evidence?.visual?.firstOrNull()?.let { evidence ->
                             Text("视觉线索：$evidence", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.82f))
+                        }
+                        if (uiState.switchingTarget) {
+                            Text(
+                                "正在从上一目标切换到新目标，请稍候 1~2 帧",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFFFDE68A),
+                            )
                         }
                         Text(uiState.statusText, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.82f))
                         uiState.error?.let {
@@ -486,8 +489,6 @@ fun RealtimeScreen(
                                     title = item.title,
                                     sourceType = item.source_type,
                                     summary = item.content,
-                                    score = item.score,
-                                    riskRelation = knowledgeRiskRelation(item, uiState.latestResponse),
                                     possibleCauses = item.possible_causes,
                                     careAdvice = item.care_advice,
                                 )
@@ -514,14 +515,11 @@ fun RealtimeScreen(
                             label = { Text("实时描述（可手输或按住说话）") },
                             minLines = 2,
                         )
-                        Row(
-                            modifier = Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        OutlinedButton(
+                            onClick = { autoSpeak = !autoSpeak },
+                            modifier = Modifier.align(Alignment.End),
                         ) {
-                            AssistChip(onClick = { realtimeViewModel.setIntervalMillis(1500L) }, label = { Text("1.5秒") })
-                            AssistChip(onClick = { realtimeViewModel.setIntervalMillis(2500L) }, label = { Text("2.5秒") })
-                            AssistChip(onClick = { realtimeViewModel.setIntervalMillis(4000L) }, label = { Text("4秒") })
-                            AssistChip(onClick = { autoSpeak = !autoSpeak }, label = { Text(if (autoSpeak) "播报开" else "播报关") })
+                            Text(if (autoSpeak) "自动播报：开" else "自动播报：关")
                         }
                         Card(
                             modifier = Modifier
@@ -591,7 +589,7 @@ fun RealtimeScreen(
                                 enabled = imageCapture != null && !uiState.loading,
                                 modifier = Modifier.weight(1f),
                             ) {
-                                Text("抓拍")
+                                Text("拍照识别")
                             }
                             Button(
                                 onClick = {
@@ -669,8 +667,6 @@ private fun RealtimeKnowledgeItem(
     title: String,
     sourceType: String,
     summary: String,
-    score: Double,
-    riskRelation: String,
     possibleCauses: List<String>,
     careAdvice: List<String>,
 ) {
@@ -694,30 +690,6 @@ private fun RealtimeKnowledgeItem(
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.White,
             )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFF2563EB).copy(alpha = 0.38f),
-            ) {
-                Text(
-                    "命中 ${(score * 100).toInt()}%",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-            }
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFB45309).copy(alpha = 0.38f),
-            ) {
-                Text(
-                    riskRelation,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-            }
         }
         Text(title, color = Color.White, style = MaterialTheme.typography.bodyMedium)
         Text(summary, color = Color.White.copy(alpha = 0.78f), style = MaterialTheme.typography.bodySmall)

@@ -4,6 +4,8 @@ from collections.abc import Iterable
 
 from app.domain.schemas import AnalyzeResponse, KnowledgeSnippet, RiskLevel
 
+_NEGATION_TERMS = ("无", "没有", "并无", "未", "未见", "不是", "并非", "否认")
+
 
 class RiskEngine:
     HARD_RULES: tuple[tuple[tuple[str, ...], RiskLevel, str, str], ...] = (
@@ -56,18 +58,18 @@ class RiskEngine:
             response.retrieved_knowledge = []
             return response
 
-        knowledge_hits = list(knowledge_hits)
-        corpus = " ".join(
-            [
-                user_text,
-                response.summary,
-                " ".join(response.emotion_assessment.signals),
-                " ".join(response.health_risk_assessment.triggers),
-                " ".join(model_tags),
-                " ".join(response.evidence.textual),
-                " ".join(self._knowledge_terms(knowledge_hits)),
-            ]
-        )
+        risk_texts = [
+            user_text,
+            response.summary,
+            " ".join(response.emotion_assessment.signals),
+            " ".join(response.health_risk_assessment.triggers),
+            " ".join(model_tags),
+            " ".join(response.evidence.visual),
+            " ".join(response.evidence.textual),
+            response.health_risk_assessment.reason,
+        ]
+        # 知识库命中用于解释与建议，不直接作为“风险触发证据”，避免把知识条目词面当成当前事实。
+        has_visual_or_textual_evidence = bool(response.evidence.visual or response.evidence.textual)
 
         upgraded_level = response.health_risk_assessment.level
         urgent_flags = set(response.urgent_flags)
@@ -75,7 +77,11 @@ class RiskEngine:
         reason_parts = [response.health_risk_assessment.reason] if response.health_risk_assessment.reason else []
 
         for keywords, target_level, flag, reason in self.HARD_RULES:
-            if any(keyword in corpus for keyword in keywords):
+            matched = any(self._contains_non_negated_keyword(risk_texts, keyword) for keyword in keywords)
+            if matched:
+                # high/urgent 需要至少有当前帧视觉或文本证据，避免仅靠模糊总结词误报。
+                if target_level in {RiskLevel.HIGH, RiskLevel.URGENT} and not has_visual_or_textual_evidence:
+                    continue
                 if self.ORDER[target_level] > self.ORDER[upgraded_level]:
                     upgraded_level = target_level
                 urgent_flags.add(flag)
@@ -92,25 +98,39 @@ class RiskEngine:
         response.health_risk_assessment.reason = "；".join(dict.fromkeys(reason_parts)) or "未触发额外风险规则。"
         response.urgent_flags = sorted(urgent_flags)
 
-        if upgraded_level in {RiskLevel.HIGH, RiskLevel.URGENT}:
+        has_visual_evidence = bool(response.evidence.visual)
+        has_textual_evidence = bool(response.evidence.textual)
+        if response.health_risk_assessment.level in {RiskLevel.HIGH, RiskLevel.URGENT}:
+            if not (has_visual_evidence and has_textual_evidence):
+                response.health_risk_assessment.level = RiskLevel.MEDIUM
+                response.health_risk_assessment.score = min(response.health_risk_assessment.score, 0.62)
+                if "risk_dual_evidence_missing" not in response.health_risk_assessment.triggers:
+                    response.health_risk_assessment.triggers.append("risk_dual_evidence_missing")
+                if "risk_dual_evidence_missing" not in response.urgent_flags:
+                    response.urgent_flags.append("risk_dual_evidence_missing")
+
+        if response.health_risk_assessment.level in {RiskLevel.HIGH, RiskLevel.URGENT}:
             if "如果本喵一直这样或更难受了，请尽快带我线下就医喵。" not in response.care_suggestions:
                 response.care_suggestions.append("如果本喵一直这样或更难受了，请尽快带我线下就医喵。")
 
         return response
 
     @staticmethod
-    def _knowledge_terms(items: Iterable[KnowledgeSnippet]) -> list[str]:
-        terms: list[str] = []
-        for item in items:
-            terms.extend(
-                [
-                    item.title,
-                    item.content,
-                    *item.possible_causes[:3],
-                    *item.care_advice[:2],
-                ]
-            )
-        return [term for term in terms if term]
+    def _contains_non_negated_keyword(texts: Iterable[str], keyword: str) -> bool:
+        key = (keyword or "").strip().lower()
+        if not key:
+            return False
+        for text in texts:
+            content = (text or "").lower()
+            if not content:
+                continue
+            start = content.find(key)
+            while start != -1:
+                left = content[max(0, start - 4) : start]
+                if not any(neg in left for neg in _NEGATION_TERMS):
+                    return True
+                start = content.find(key, start + len(key))
+        return False
 
     @staticmethod
     def _level_score(level: RiskLevel) -> float:

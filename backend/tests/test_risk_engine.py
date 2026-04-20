@@ -35,7 +35,7 @@ def test_risk_engine_upgrades_urination_issue() -> None:
     assert "urination_issue_possible" in upgraded.urgent_flags
 
 
-def test_risk_engine_uses_retrieved_knowledge_terms() -> None:
+def test_risk_engine_should_not_escalate_from_knowledge_text_only() -> None:
     response = AnalyzeResponse(
         summary="状态需要继续观察。",
         emotion_assessment=EmotionAssessment(primary="unknown", confidence=0.4, signals=[]),
@@ -67,8 +67,35 @@ def test_risk_engine_uses_retrieved_knowledge_terms() -> None:
         ],
     )
 
-    assert upgraded.health_risk_assessment.level == RiskLevel.HIGH
-    assert "respiratory_distress" in upgraded.urgent_flags
+    assert upgraded.health_risk_assessment.level == RiskLevel.LOW
+    assert "respiratory_distress" not in upgraded.urgent_flags
+
+
+def test_risk_engine_negation_should_not_trigger_high_rule() -> None:
+    response = AnalyzeResponse(
+        summary="猫咪状态暂时稳定。",
+        emotion_assessment=EmotionAssessment(primary="relaxed", confidence=0.7, signals=["放松"]),
+        health_risk_assessment=HealthRiskAssessment(
+            level=RiskLevel.LOW,
+            score=0.2,
+            triggers=[],
+            reason="暂无异常。",
+        ),
+        evidence=EvidenceBundle(visual=["姿态自然"], textual=["未见呕吐"], knowledge_refs=[]),
+        care_suggestions=["继续观察。"],
+        urgent_flags=[],
+        followup_questions=[],
+    )
+
+    upgraded = risk_engine.apply(
+        response,
+        user_text="今天没有呕吐，走路也正常。",
+        model_tags=[],
+        knowledge_hits=[],
+    )
+
+    assert upgraded.health_risk_assessment.level == RiskLevel.LOW
+    assert "vomit_warning" not in upgraded.urgent_flags
 
 
 def test_risk_engine_no_cat_should_not_escalate() -> None:

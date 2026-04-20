@@ -14,6 +14,18 @@ from app.domain.schemas import (
 )
 
 _UNCERTAIN_SUMMARY_HINTS = ("模糊", "不清", "过暗", "过小", "遮挡", "看不清", "无法确认", "难判断")
+_LOW_QUALITY_HINTS = (
+    "模糊",
+    "不清",
+    "过暗",
+    "过小",
+    "遮挡",
+    "看不清",
+    "拖影",
+    "反光",
+    "噪点",
+    "失焦",
+)
 _NON_CAT_TOKENS = (
     "dog",
     "puppy",
@@ -22,12 +34,26 @@ _NON_CAT_TOKENS = (
     "狗",
     "小狗",
 )
-_CAT_TOKENS = ("cat", "猫", "猫咪")
+_CAT_TOKENS = ("cat", "猫", "猫咪", "本喵", "喵")
+_CAT_VISUAL_HINTS = (
+    "耳朵",
+    "胡须",
+    "猫爪",
+    "尾巴",
+    "猫砂",
+    "呼噜",
+    "瞳孔",
+    "三角耳",
+)
 _EMOTION_PRIMARY_ALIASES: dict[str, str] = {
     "开心": "happy",
     "高兴": "happy",
     "愉快": "happy",
     "happy": "happy",
+    "兴奋": "excited",
+    "激动": "excited",
+    "亢奋": "excited",
+    "excited": "excited",
     "放松": "relaxed",
     "松弛": "relaxed",
     "安逸": "relaxed",
@@ -37,6 +63,10 @@ _EMOTION_PRIMARY_ALIASES: dict[str, str] = {
     "探索": "curious",
     "探究": "curious",
     "curious": "curious",
+    "疑惑": "confused",
+    "困惑": "confused",
+    "迷惑": "confused",
+    "confused": "confused",
     "紧张": "stress_alert",
     "应激": "stress_alert",
     "stress": "stress_alert",
@@ -52,6 +82,20 @@ _EMOTION_PRIMARY_ALIASES: dict[str, str] = {
     "pain_sign": "pain_sign",
     "排尿不适": "litterbox_discomfort",
     "litterbox_discomfort": "litterbox_discomfort",
+}
+_NEGATIVE_EMOTION_PHRASES: dict[str, str] = {
+    "不开心": "low_energy",
+    "不高兴": "low_energy",
+    "没精神": "low_energy",
+    "不兴奋": "low_energy",
+    "不放松": "stress_alert",
+}
+_EMOTION_CUE_TERMS: dict[str, tuple[str, ...]] = {
+    "excited": ("兴奋", "激动", "冲刺", "快速跑", "跳跃", "扑", "亢奋"),
+    "curious": ("好奇", "探索", "嗅闻", "张望", "观察", "侧头", "盯着看"),
+    "confused": ("疑惑", "困惑", "迷惑", "犹豫", "反复张望", "左右看"),
+    "happy": ("开心", "愉快", "呼噜", "蹭", "踩奶", "尾巴竖起"),
+    "relaxed": ("放松", "平稳", "打盹", "趴卧", "慢眨眼", "慵懒"),
 }
 
 
@@ -92,10 +136,15 @@ class ResponseParser:
     def calibrate_response(self, response: AnalyzeResponse) -> None:
         """后置校准：抑制「无视觉依据却过高 confidence」等常见过拟合。"""
         response.emotion_assessment.primary = self._normalize_emotion_primary(response.emotion_assessment.primary)
+        self._refine_emotion_by_visual_cues(response)
         primary = (response.emotion_assessment.primary or "").strip().lower()
         conf = float(response.emotion_assessment.confidence)
 
         if self._looks_like_non_cat_target(response):
+            self._force_non_cat_response(response)
+            return
+
+        if self._looks_like_missing_cat_evidence(response):
             self._force_non_cat_response(response)
             return
 
@@ -112,6 +161,42 @@ class ResponseParser:
             conf = min(conf, 0.48)
 
         response.emotion_assessment.confidence = max(0.0, min(1.0, conf))
+
+    @staticmethod
+    def _refine_emotion_by_visual_cues(response: AnalyzeResponse) -> None:
+        primary = (response.emotion_assessment.primary or "").strip().lower()
+        if primary in {"no_cat", "unknown", ""}:
+            return
+        corpus = " ".join(
+            [
+                response.summary or "",
+                " ".join(response.emotion_assessment.signals),
+                " ".join(response.evidence.visual),
+            ]
+        )
+        if not corpus.strip():
+            return
+        matched: list[str] = []
+        for label, terms in _EMOTION_CUE_TERMS.items():
+            if any(ResponseParser._contains_positive_cue(corpus, term) for term in terms):
+                matched.append(label)
+        if not matched:
+            return
+        # 优先输出更细粒度标签，减少“都变成 relaxed”的体验。
+        priority = ["excited", "confused", "curious", "happy", "relaxed"]
+        selected = next((label for label in priority if label in matched), primary)
+        if selected != primary:
+            response.emotion_assessment.primary = selected
+            response.emotion_assessment.confidence = max(response.emotion_assessment.confidence, 0.62)
+
+    @staticmethod
+    def _contains_positive_cue(corpus: str, term: str) -> bool:
+        if term not in corpus:
+            return False
+        for neg in ("不", "没", "无"):
+            if f"{neg}{term}" in corpus:
+                return False
+        return True
 
     @staticmethod
     def _looks_like_non_cat_target(response: AnalyzeResponse) -> bool:
@@ -148,9 +233,33 @@ class ResponseParser:
         response.followup_questions = []
 
     @staticmethod
+    def _looks_like_missing_cat_evidence(response: AnalyzeResponse) -> bool:
+        primary = (response.emotion_assessment.primary or "").strip().lower()
+        if primary in {"no_cat", "unknown", ""}:
+            return False
+        if response.cat_target_box is not None and response.cat_target_box.confidence >= 0.45:
+            return False
+        visual_corpus = " ".join(
+            [
+                response.summary or "",
+                " ".join(response.emotion_assessment.signals),
+                " ".join(response.evidence.visual),
+                " ".join(response.evidence.textual),
+            ]
+        ).lower()
+        has_cat_cue = any(token in visual_corpus for token in _CAT_TOKENS) or any(
+            hint in visual_corpus for hint in _CAT_VISUAL_HINTS
+        )
+        if has_cat_cue:
+            return False
+        # 无猫框、无猫特征词、视觉证据弱时，不接受“猫状态”结论。
+        return response.emotion_assessment.confidence < 0.72
+
+    @staticmethod
     def _enforce_consistency_rules(response: AnalyzeResponse) -> None:
         primary = (response.emotion_assessment.primary or "").strip().lower()
         has_visual_evidence = bool(response.evidence.visual)
+        has_textual_evidence = bool(response.evidence.textual)
 
         if primary == "no_cat":
             response.health_risk_assessment.level = RiskLevel.LOW
@@ -166,6 +275,19 @@ class ResponseParser:
             response.followup_questions = []
             return
 
+        if ResponseParser._is_low_quality_observation(response):
+            response.emotion_assessment.primary = "unknown"
+            response.emotion_assessment.confidence = min(response.emotion_assessment.confidence, 0.4)
+            if response.health_risk_assessment.level in {RiskLevel.HIGH, RiskLevel.URGENT}:
+                response.health_risk_assessment.level = RiskLevel.MEDIUM
+            response.health_risk_assessment.score = min(response.health_risk_assessment.score, 0.48)
+            if "low_quality_frame" not in response.health_risk_assessment.triggers:
+                response.health_risk_assessment.triggers.append("low_quality_frame")
+            if "low_quality_frame" not in response.urgent_flags:
+                response.urgent_flags.append("low_quality_frame")
+            if not response.care_suggestions:
+                response.care_suggestions = ["这帧有点看不清，请靠近并稳住镜头再让我看看喵。"]
+
         # 高危输出必须存在清晰视觉证据，否则强制降为中风险，减少幻觉性误报。
         if response.health_risk_assessment.level in {RiskLevel.HIGH, RiskLevel.URGENT} and not has_visual_evidence:
             response.health_risk_assessment.level = RiskLevel.MEDIUM
@@ -174,6 +296,31 @@ class ResponseParser:
                 response.health_risk_assessment.triggers.append("visual_evidence_weak")
             if "visual_evidence_weak" not in response.urgent_flags:
                 response.urgent_flags.append("visual_evidence_weak")
+
+        # 高危至少需要双证据（视觉 + 文本）之一明确且另一个不为空，降低单线索误报。
+        if response.health_risk_assessment.level in {RiskLevel.HIGH, RiskLevel.URGENT}:
+            has_dual_evidence = has_visual_evidence and has_textual_evidence
+            if not has_dual_evidence:
+                response.health_risk_assessment.level = RiskLevel.MEDIUM
+                response.health_risk_assessment.score = min(response.health_risk_assessment.score, 0.62)
+                if "risk_dual_evidence_missing" not in response.health_risk_assessment.triggers:
+                    response.health_risk_assessment.triggers.append("risk_dual_evidence_missing")
+                if "risk_dual_evidence_missing" not in response.urgent_flags:
+                    response.urgent_flags.append("risk_dual_evidence_missing")
+
+    @staticmethod
+    def _is_low_quality_observation(response: AnalyzeResponse) -> bool:
+        merged = " ".join(
+            [
+                response.summary or "",
+                " ".join(response.evidence.visual),
+                " ".join(response.evidence.textual),
+            ]
+        )
+        if not any(hint in merged for hint in _LOW_QUALITY_HINTS):
+            return False
+        box_conf = response.cat_target_box.confidence if response.cat_target_box is not None else 0.0
+        return box_conf < 0.45
 
     @staticmethod
     def _normalize_payload_in_place(payload: dict) -> None:
@@ -272,10 +419,14 @@ class ResponseParser:
         key = primary.strip().lower()
         if not key:
             return "unknown"
+        for phrase, normalized in _NEGATIVE_EMOTION_PHRASES.items():
+            if phrase in key:
+                return normalized
         if key in _EMOTION_PRIMARY_ALIASES:
             return _EMOTION_PRIMARY_ALIASES[key]
         for alias, normalized in _EMOTION_PRIMARY_ALIASES.items():
-            if alias in key:
+            # 避免 “不开心/不放松” 这类否定短语被错误映射到正向情绪。
+            if alias in key and f"不{alias}" not in key:
                 return normalized
         return key
 

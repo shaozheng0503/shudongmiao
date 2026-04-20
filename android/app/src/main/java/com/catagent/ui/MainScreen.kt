@@ -31,6 +31,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,6 +43,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +52,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -64,8 +67,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.catagent.BuildConfig
 import com.catagent.data.model.AnalyzeResponse
+import com.catagent.data.model.CatTargetBox
+import com.catagent.data.model.EmotionAssessment
+import com.catagent.data.model.EvidenceBundle
+import com.catagent.data.model.HealthRiskAssessment
 import com.catagent.ui.capture.CaptureViewModel
 import com.catagent.ui.capture.MediaCaptureFileStore
 import com.catagent.ui.chat.ChatViewModel
@@ -88,6 +94,26 @@ private val PageHorizontalPadding = 20.dp
 private val PageTopPadding = 20.dp
 private val PageBottomPadding = 110.dp
 private val SectionSpacing = 14.dp
+
+private data class DemoMeta(
+    val petName: String,
+    val dateLabel: String,
+    val timeLabel: String,
+    val cameraLabel: String,
+)
+
+private data class DemoTimelineEntry(
+    val timeLabel: String,
+    val phaseLabel: String,
+    val summary: String,
+    val level: String,
+    val ownerAdvice: String,
+)
+
+private enum class DemoScenario {
+    STABLE,
+    RISK,
+}
 
 private data class EvidenceMarkerUi(
     val label: String,
@@ -120,8 +146,12 @@ fun CatAgentApp(
     var pendingCaptureUri by remember { mutableStateOf<Uri?>(null) }
     var pendingPermissionAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var pendingNavigateToResult by remember { mutableStateOf(false) }
+    var showQuickDetectDialog by remember { mutableStateOf(false) }
     var lastPrimaryResultKey by remember { mutableStateOf<String?>(null) }
     var homeFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var demoScenario by rememberSaveable { mutableStateOf(DemoScenario.STABLE.name) }
+    val activeDemoScenario = runCatching { DemoScenario.valueOf(demoScenario) }.getOrDefault(DemoScenario.STABLE)
+    val demoTimeline = remember(activeDemoScenario) { demoDayTimeline(activeDemoScenario) }
     val trackedResults = remember { mutableStateListOf<AnalyzeResponse>() }
     val archivedResults = remember { mutableStateListOf<AnalyzeResponse>() }
 
@@ -187,6 +217,65 @@ fun CatAgentApp(
         }
     }
 
+    val openPickImage = { imagePicker.launch("image/*") }
+    val openPickVideo = { videoPicker.launch("video/*") }
+    val openTakePhoto = {
+        requestPermissionsIfNeeded(
+            requiredPermissions = listOf(Manifest.permission.CAMERA),
+            hasPermission = { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            },
+            onRequest = { permissions ->
+                pendingPermissionAction = {
+                    val uri = MediaCaptureFileStore.createImageUri(context)
+                    pendingCaptureUri = uri
+                    takePictureLauncher.launch(uri)
+                }
+                permissionLauncher.launch(permissions.toTypedArray())
+            },
+            onGranted = {
+                val uri = MediaCaptureFileStore.createImageUri(context)
+                pendingCaptureUri = uri
+                takePictureLauncher.launch(uri)
+            },
+        )
+    }
+    val openRecordVideo = {
+        requestPermissionsIfNeeded(
+            requiredPermissions = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+            hasPermission = { permission ->
+                ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
+            },
+            onRequest = { permissions ->
+                pendingPermissionAction = {
+                    val uri = MediaCaptureFileStore.createVideoUri(context)
+                    pendingCaptureUri = uri
+                    captureVideoLauncher.launch(uri)
+                }
+                permissionLauncher.launch(permissions.toTypedArray())
+            },
+            onGranted = {
+                val uri = MediaCaptureFileStore.createVideoUri(context)
+                pendingCaptureUri = uri
+                captureVideoLauncher.launch(uri)
+            },
+        )
+    }
+    val submitCurrentMedia = {
+        pendingNavigateToResult = true
+        currentTab = MainTab.RESULT
+        captureViewModel.submit(contentResolver)
+    }
+    val triggerQuickDetect = {
+        if (captureState.selectedUri == null) {
+            showQuickDetectDialog = true
+            currentTab = MainTab.HOME
+            homeFeedbackMessage = "先选择图片或视频，再开始识喵。"
+        } else {
+            submitCurrentMedia()
+        }
+    }
+
     LaunchedEffect(captureState.sessionId, captureState.result) {
         chatViewModel.bindSession(captureState.sessionId, captureState.result)
     }
@@ -195,8 +284,13 @@ fun CatAgentApp(
         captureViewModel.checkBackendStatus()
     }
 
+    // 识别主链路只使用真实分析结果，避免默认演示数据误导真实测试。
     val primaryResponse = chatState.latestResponse ?: captureState.result
-    val historyResponses = trackedResults.reversed()
+    val historyResponses = if (trackedResults.isNotEmpty()) {
+        trackedResults.reversed()
+    } else {
+        emptyList()
+    }
     val healthResponses = if (archivedResults.isNotEmpty()) {
         archivedResults.reversed()
     } else {
@@ -237,60 +331,28 @@ fun CatAgentApp(
                 latestResponse = primaryResponse,
                 historyResponses = historyResponses,
                 onRefreshBackend = captureViewModel::checkBackendStatus,
-                onPickImage = { imagePicker.launch("image/*") },
-                onPickVideo = { videoPicker.launch("video/*") },
-                onTakePhoto = {
-                    requestPermissionsIfNeeded(
-                        requiredPermissions = listOf(Manifest.permission.CAMERA),
-                        hasPermission = { permission ->
-                            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                        },
-                        onRequest = { permissions ->
-                            pendingPermissionAction = {
-                                val uri = MediaCaptureFileStore.createImageUri(context)
-                                pendingCaptureUri = uri
-                                takePictureLauncher.launch(uri)
-                            }
-                            permissionLauncher.launch(permissions.toTypedArray())
-                        },
-                        onGranted = {
-                            val uri = MediaCaptureFileStore.createImageUri(context)
-                            pendingCaptureUri = uri
-                            takePictureLauncher.launch(uri)
-                        },
-                    )
-                },
-                onRecordVideo = {
-                    requestPermissionsIfNeeded(
-                        requiredPermissions = listOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
-                        hasPermission = { permission ->
-                            ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
-                        },
-                        onRequest = { permissions ->
-                            pendingPermissionAction = {
-                                val uri = MediaCaptureFileStore.createVideoUri(context)
-                                pendingCaptureUri = uri
-                                captureVideoLauncher.launch(uri)
-                            }
-                            permissionLauncher.launch(permissions.toTypedArray())
-                        },
-                        onGranted = {
-                            val uri = MediaCaptureFileStore.createVideoUri(context)
-                            pendingCaptureUri = uri
-                            captureVideoLauncher.launch(uri)
-                        },
-                    )
-                },
-                onSubmitAnalysis = {
-                    pendingNavigateToResult = true
-                    currentTab = MainTab.RESULT
-                    captureViewModel.submit(contentResolver)
-                },
+                onPickImage = openPickImage,
+                onPickVideo = openPickVideo,
+                onTakePhoto = openTakePhoto,
+                onRecordVideo = openRecordVideo,
+                onSubmitAnalysis = triggerQuickDetect,
                 onSelectFollowup = chatViewModel::updateQuestion,
                 onOpenRealtime = { showRealtimeScreen = true },
                 onOpenRealtimeCall = { showRealtimeCallScreen = true },
                 onOpenHealth = { currentTab = MainTab.HEALTH },
                 onOpenResult = { currentTab = MainTab.RESULT },
+                demoScenario = activeDemoScenario,
+                onToggleDemoScenario = {
+                    demoScenario = when (activeDemoScenario) {
+                        DemoScenario.STABLE -> DemoScenario.RISK.name
+                        DemoScenario.RISK -> DemoScenario.STABLE.name
+                    }
+                    homeFeedbackMessage = if (activeDemoScenario == DemoScenario.STABLE) {
+                        "已切换到风险日演示数据。"
+                    } else {
+                        "已切换到稳定日演示数据。"
+                    }
+                },
             )
             MainTab.RESULT -> ResultFlowScreen(
                 response = primaryResponse,
@@ -325,12 +387,14 @@ fun CatAgentApp(
             )
             MainTab.MONITOR -> MonitorTabScreen(
                 response = primaryResponse,
+                demoTimeline = demoTimeline,
                 onBackHome = { currentTab = MainTab.HOME },
                 onOpenRealtimeCall = { showRealtimeCallScreen = true },
                 onOpenRealtimeObserve = { showRealtimeScreen = true },
             )
             MainTab.HISTORY -> HistoryTabScreen(
                 responses = historyResponses,
+                demoTimeline = demoTimeline,
                 onBackHome = { currentTab = MainTab.HOME },
                 onOpenResult = { currentTab = MainTab.RESULT },
             )
@@ -341,20 +405,193 @@ fun CatAgentApp(
             )
         }
 
+        if (showQuickDetectDialog) {
+            AlertDialog(
+                onDismissRequest = { showQuickDetectDialog = false },
+                title = { Text("即刻识喵") },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("先选择一种输入方式：")
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                showQuickDetectDialog = false
+                                openTakePhoto()
+                            }) { Text("拍照") }
+                            OutlinedButton(onClick = {
+                                showQuickDetectDialog = false
+                                openRecordVideo()
+                            }) { Text("录视频") }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            OutlinedButton(onClick = {
+                                showQuickDetectDialog = false
+                                openPickImage()
+                            }) { Text("上传图片") }
+                            OutlinedButton(onClick = {
+                                showQuickDetectDialog = false
+                                openPickVideo()
+                            }) { Text("上传视频") }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showQuickDetectDialog = false }) {
+                        Text("我知道了")
+                    }
+                },
+            )
+        }
+
         BottomAppBarDesign(
             currentTab = currentTab,
             onSelectHome = { currentTab = MainTab.HOME },
             onSelectMonitor = { currentTab = MainTab.MONITOR },
             onSelectHistory = { currentTab = MainTab.HISTORY },
             onSelectHealth = { currentTab = MainTab.HEALTH },
-            onCenterAction = {
-                pendingNavigateToResult = true
-                currentTab = MainTab.RESULT
-                captureViewModel.submit(contentResolver)
-            },
+            onCenterAction = triggerQuickDetect,
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
+}
+
+private fun demoShowcaseResponses(scenario: DemoScenario): List<AnalyzeResponse> = when (scenario) {
+    DemoScenario.STABLE -> listOf(
+        AnalyzeResponse(
+            session_id = "demo-001",
+            summary = "本喵趴卧放松，呼吸平稳，整体状态不错喵。",
+            emotion_assessment = EmotionAssessment(
+                primary = "relaxed",
+                confidence = 0.89,
+                signals = listOf("趴卧稳定", "尾巴自然"),
+            ),
+            health_risk_assessment = HealthRiskAssessment(
+                level = "low",
+                score = 0.22,
+                triggers = listOf("状态平稳"),
+                reason = "当前未见明显异常，建议保持日常观察。",
+            ),
+            evidence = EvidenceBundle(
+                visual = listOf("身体放松", "呼吸节奏均匀"),
+                textual = listOf("用户描述: 午后休息"),
+                knowledge_refs = listOf("docx_overall_mental_04"),
+            ),
+            cat_target_box = CatTargetBox(x = 0.18, y = 0.14, width = 0.62, height = 0.72, confidence = 0.84),
+            care_suggestions = listOf("继续保持安静环境，补充清洁饮水。"),
+            urgent_flags = emptyList(),
+            followup_questions = listOf("今天进食和饮水是否正常喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+        AnalyzeResponse(
+            session_id = "demo-002",
+            summary = "本喵状态轻松，互动意愿正常，建议维持日常节奏喵。",
+            emotion_assessment = EmotionAssessment(primary = "happy", confidence = 0.83, signals = listOf("主动靠近", "轻声呼噜")),
+            health_risk_assessment = HealthRiskAssessment(level = "low", score = 0.3, triggers = listOf("活跃正常"), reason = "今日波动较小，整体表现稳定。"),
+            evidence = EvidenceBundle(visual = listOf("主动贴近镜头"), textual = listOf("用户描述: 下午玩耍"), knowledge_refs = listOf("emotion_stress_signals")),
+            cat_target_box = CatTargetBox(x = 0.2, y = 0.18, width = 0.58, height = 0.67, confidence = 0.79),
+            care_suggestions = listOf("继续保持固定作息和互动节奏。"),
+            urgent_flags = emptyList(),
+            followup_questions = listOf("今晚准备了新玩具吗喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+        AnalyzeResponse(
+            session_id = "demo-003",
+            summary = "本喵偶尔警觉但可快速放松，整体仍在稳定区间。",
+            emotion_assessment = EmotionAssessment(primary = "curious", confidence = 0.74, signals = listOf("短暂停顿观察", "耳位回正")),
+            health_risk_assessment = HealthRiskAssessment(level = "medium", score = 0.48, triggers = listOf("轻度波动"), reason = "存在轻度短时波动，继续观察即可。"),
+            evidence = EvidenceBundle(visual = listOf("短暂耳位后压"), textual = listOf("用户描述: 门外有声响"), knowledge_refs = listOf("docx_abnormal_posture_03")),
+            cat_target_box = CatTargetBox(x = 0.23, y = 0.19, width = 0.56, height = 0.65, confidence = 0.76),
+            care_suggestions = listOf("保持环境安静，减少突发刺激。"),
+            urgent_flags = listOf("observe_behavior_change"),
+            followup_questions = listOf("夜间是否还会频繁警觉喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+    )
+    DemoScenario.RISK -> listOf(
+        AnalyzeResponse(
+            session_id = "demo-001",
+            summary = "本喵活动意愿下降，姿态偏紧，建议重点观察步态。",
+            emotion_assessment = EmotionAssessment(primary = "stress_alert", confidence = 0.82, signals = listOf("躯干紧绷", "活动减少")),
+            health_risk_assessment = HealthRiskAssessment(level = "medium", score = 0.62, triggers = listOf("持续应激"), reason = "上午出现连续紧张体态，需提高观察频次。"),
+            evidence = EvidenceBundle(visual = listOf("动作保守"), textual = listOf("用户描述: 上午不太愿动"), knowledge_refs = listOf("docx_overall_mental_03")),
+            cat_target_box = CatTargetBox(x = 0.18, y = 0.14, width = 0.62, height = 0.72, confidence = 0.84),
+            care_suggestions = listOf("减少跳高活动并记录步态变化。"),
+            urgent_flags = listOf("observe_gait_change"),
+            followup_questions = listOf("今天是否出现明显拒跳喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+        AnalyzeResponse(
+            session_id = "demo-002",
+            summary = "本喵晚间应激加重，建议先降低环境刺激并短时隔离休息。",
+            emotion_assessment = EmotionAssessment(primary = "stress_alert", confidence = 0.86, signals = listOf("耳位后压", "持续警觉")),
+            health_risk_assessment = HealthRiskAssessment(level = "high", score = 0.78, triggers = listOf("应激升级"), reason = "晚间应激信号连续出现，建议及时干预。"),
+            evidence = EvidenceBundle(visual = listOf("耳位持续后压"), textual = listOf("用户描述: 夜间噪声"), knowledge_refs = listOf("emotion_stress_signals")),
+            cat_target_box = CatTargetBox(x = 0.2, y = 0.18, width = 0.58, height = 0.67, confidence = 0.79),
+            care_suggestions = listOf("先转移到安静空间，避免陌生接触。"),
+            urgent_flags = listOf("stress_escalation"),
+            followup_questions = listOf("是否伴随食欲下降或躲藏增多喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+        AnalyzeResponse(
+            session_id = "demo-003",
+            summary = "本喵步态偏慢且起身迟疑，建议尽快线下评估。",
+            emotion_assessment = EmotionAssessment(primary = "pain_sign", confidence = 0.79, signals = listOf("起身迟疑", "步幅变短")),
+            health_risk_assessment = HealthRiskAssessment(level = "high", score = 0.81, triggers = listOf("步态异常线索"), reason = "连续出现运动不适表现，需尽快排查。"),
+            evidence = EvidenceBundle(visual = listOf("后肢发力保守"), textual = listOf("用户描述: 晚饭后走路慢"), knowledge_refs = listOf("docx_abnormal_posture_03")),
+            cat_target_box = CatTargetBox(x = 0.23, y = 0.19, width = 0.56, height = 0.65, confidence = 0.76),
+            care_suggestions = listOf("暂停高强度活动，优先安排线下评估。"),
+            urgent_flags = listOf("gait_issue"),
+            followup_questions = listOf("是否已连续两天出现步态变慢喵？"),
+            disclaimer = "本结果仅用于风险提示与照护建议，不构成医疗诊断。",
+        ),
+    )
+}
+
+private fun demoMetaOf(response: AnalyzeResponse?): DemoMeta? = when (response?.session_id) {
+    "demo-001" -> DemoMeta(
+        petName = "糯米",
+        dateLabel = "2026年04月19日",
+        timeLabel = "10:30 AM",
+        cameraLabel = "客厅树洞摄像头",
+    )
+    "demo-002" -> DemoMeta(
+        petName = "二蛋",
+        dateLabel = "2026年04月18日",
+        timeLabel = "09:12 PM",
+        cameraLabel = "玄关树洞摄像头",
+    )
+    "demo-003" -> DemoMeta(
+        petName = "糯米",
+        dateLabel = "2026年04月18日",
+        timeLabel = "07:46 PM",
+        cameraLabel = "阳台树洞摄像头",
+    )
+    else -> null
+}
+
+private fun demoTimelineTime(response: AnalyzeResponse, index: Int): String =
+    demoMetaOf(response)?.timeLabel ?: "记录 ${index + 1}"
+
+private fun demoDayTimeline(scenario: DemoScenario): List<DemoTimelineEntry> = when (scenario) {
+    DemoScenario.STABLE -> listOf(
+        DemoTimelineEntry("07:30", "清晨巡屋", "本喵精神不错，主动巡逻和伸展。", "low", "早晨可用逗猫棒做 5 分钟唤醒活动。"),
+        DemoTimelineEntry("09:10", "早餐后", "进食顺利，饮水正常，情绪稳定。", "low", "保持湿粮+清水搭配，记录今日进食量。"),
+        DemoTimelineEntry("11:40", "窗边观察", "对窗外声音较敏感，出现短暂警觉。", "medium", "减少突发噪音，拉上部分窗帘降低刺激。"),
+        DemoTimelineEntry("13:20", "午后小憩", "趴卧放松，呼吸均匀，无明显异常。", "low", "保持安静休息区，避免频繁打扰。"),
+        DemoTimelineEntry("16:00", "活动时段", "起身动作略慢，后肢发力偏保守。", "medium", "今天减少跳高动作，优先平地互动。"),
+        DemoTimelineEntry("18:45", "晚餐前后", "情绪好转，互动意愿提升。", "low", "晚饭后可安排轻运动，观察步态连续性。"),
+        DemoTimelineEntry("21:15", "夜间巡游", "出现轻度应激反应，耳位有后压。", "medium", "关灯后减少陌生刺激，留熟悉气味物品。"),
+        DemoTimelineEntry("23:00", "睡前状态", "整体趋稳，可继续居家观察。", "low", "睡前补充清水，明早复查精神和步态。"),
+    )
+    DemoScenario.RISK -> listOf(
+        DemoTimelineEntry("07:20", "清晨观察", "活动意愿偏低，起身略慢。", "medium", "早晨减少跳高，先做平地观察。"),
+        DemoTimelineEntry("09:00", "早餐后", "进食较慢，警觉度偏高。", "medium", "分次少量喂食，记录进食速度。"),
+        DemoTimelineEntry("11:30", "窗边反应", "对外界声音持续紧张，耳位后压。", "high", "立即降低噪音刺激，避免访客接触。"),
+        DemoTimelineEntry("13:40", "午后休息", "短暂放松后再次紧绷。", "medium", "提供可躲藏空间，减少触碰。"),
+        DemoTimelineEntry("16:10", "活动时段", "步态保守，后肢发力不足。", "high", "停止高跳，保留平地缓行。"),
+        DemoTimelineEntry("18:30", "晚餐前后", "进食意愿下降，互动减少。", "medium", "观察饮水与排泄，必要时拍视频留档。"),
+        DemoTimelineEntry("21:05", "夜间巡游", "应激再次上升，持续警觉。", "high", "先隔离到安静房间并保持弱光。"),
+        DemoTimelineEntry("22:50", "睡前复查", "状态未完全回稳，建议线下评估。", "high", "若明早仍异常，尽快到院检查。"),
+    )
 }
 
 @Composable
@@ -382,6 +619,8 @@ private fun HomeTabScreen(
     onOpenRealtimeCall: () -> Unit,
     onOpenHealth: () -> Unit,
     onOpenResult: () -> Unit,
+    demoScenario: DemoScenario,
+    onToggleDemoScenario: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -394,6 +633,28 @@ private fun HomeTabScreen(
             backendStatus = backendStatus,
             onRefreshBackend = onRefreshBackend,
         )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7ED)),
+            border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "演示模式：${if (demoScenario == DemoScenario.STABLE) "稳定日" else "风险日"}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Color(0xFF9A3412),
+                    fontWeight = FontWeight.Medium,
+                )
+                OutlinedButton(onClick = onToggleDemoScenario) {
+                    Text(if (demoScenario == DemoScenario.STABLE) "切到风险日" else "切到稳定日")
+                }
+            }
+        }
         Text("喵~ 铲屎的，", style = MaterialTheme.typography.bodyLarge, color = Color(0xFF92400E))
         Text("本喵现在心情美滋滋！", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
         homeFeedbackMessage?.let { message ->
@@ -456,11 +717,6 @@ private fun HomeTabScreen(
         HistorySection(
             responses = historyResponses,
             onSelectFollowup = onSelectFollowup,
-        )
-        Text(
-            "当前后端：${BuildConfig.BASE_URL}",
-            style = MaterialTheme.typography.bodySmall,
-            color = AppMuted,
         )
     }
 }
@@ -695,10 +951,16 @@ private fun HealthTabScreen(
 @Composable
 private fun MonitorTabScreen(
     response: AnalyzeResponse?,
+    demoTimeline: List<DemoTimelineEntry>,
     onBackHome: () -> Unit,
     onOpenRealtimeCall: () -> Unit,
     onOpenRealtimeObserve: () -> Unit,
 ) {
+    val activeMeta = demoMetaOf(response)
+    val activePetName = activeMeta?.petName ?: "糯米"
+    val activeCameraLabel = activeMeta?.cameraLabel ?: "客厅树洞摄像头"
+    val activeTimeLabel = activeMeta?.timeLabel ?: "14:23"
+    val monitorEvents = demoTimeline.takeLast(4).reversed()
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -722,6 +984,16 @@ private fun MonitorTabScreen(
                     .align(Alignment.TopEnd)
                     .padding(top = 22.dp, end = 20.dp),
             ) { Text("返回") }
+            Text(
+                activeTimeLabel,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 30.dp)
+                    .background(Color.Black.copy(alpha = 0.32f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
+                color = Color.White.copy(alpha = 0.9f),
+                style = MaterialTheme.typography.bodySmall,
+            )
             Text(
                 response?.summary ?: "客厅树洞摄像头：本喵正在打盹喵。",
                 modifier = Modifier
@@ -758,12 +1030,12 @@ private fun MonitorTabScreen(
                 colors = CardDefaults.cardColors(containerColor = Color.White),
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("客厅的树洞摄像头", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
-                    Text("当前状态：本喵正在打盹喵", style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                    Text(activeCameraLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
+                    Text("当前状态：${response?.summary ?: "本喵正在打盹喵"}", style = MaterialTheme.typography.bodySmall, color = AppMuted)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(shape = CircleShape, color = Color(0xFFD9F99D)) {
                             Text(
-                                "糯米（本喵）",
+                                "$activePetName（本喵）",
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color(0xFF3F6212),
@@ -809,6 +1081,43 @@ private fun MonitorTabScreen(
                     }
                 }
             }
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                border = BorderStroke(1.dp, Color(0xFFE5E7EB)),
+            ) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("今日监控动态", fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
+                    monitorEvents.forEach { event ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text("${event.timeLabel} · ${event.phaseLabel}", style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                                Text(event.summary, style = MaterialTheme.typography.bodySmall, color = Color(0xFF374151), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = when (event.level.lowercase()) {
+                                    "low" -> Color(0xFFD9F99D)
+                                    "medium" -> Color(0xFFFDE68A)
+                                    else -> Color(0xFFFECACA)
+                                },
+                            ) {
+                                Text(
+                                    event.level.uppercase(),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFF7C2D12),
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -816,9 +1125,46 @@ private fun MonitorTabScreen(
 @Composable
 private fun HistoryTabScreen(
     responses: List<AnalyzeResponse>,
+    demoTimeline: List<DemoTimelineEntry>,
     onBackHome: () -> Unit,
     onOpenResult: () -> Unit,
 ) {
+    val latestMeta = demoMetaOf(responses.firstOrNull())
+    val latestDateLabel = latestMeta?.dateLabel ?: "今日"
+    val happiest = responses.maxByOrNull { it.emotion_assessment.confidence }
+    val happiestTimeLabel = happiest?.let { demoMetaOf(it)?.timeLabel } ?: "10:30 AM"
+    val stressPercent = (
+        responses.take(8).count { it.health_risk_assessment.level.lowercase() in setOf("medium", "high", "urgent") } * 100
+            / responses.take(8).size.coerceAtLeast(1)
+        ).coerceIn(8, 42)
+    val timelineEntries = if (responses.size >= 7) {
+        responses.take(8).mapIndexed { index, item ->
+            DemoTimelineEntry(
+                timeLabel = demoTimelineTime(item, index),
+                phaseLabel = if (index == 0) "最新记录" else "历史记录 ${index + 1}",
+                summary = item.summary,
+                level = item.health_risk_assessment.level,
+                ownerAdvice = item.care_suggestions.firstOrNull() ?: "继续观察本喵状态变化。",
+            )
+        }
+    } else demoTimeline
+    val highRiskCount = timelineEntries.count { it.level.lowercase() in setOf("high", "urgent") }
+    val mediumRiskCount = timelineEntries.count { it.level.lowercase() == "medium" }
+    val isRiskDay = highRiskCount >= 1 || mediumRiskCount >= 3 || stressPercent >= 34
+    val daySummaryText = if (isRiskDay) {
+        "本喵今天出现多次中风险波动，晚间还有轻度应激，建议明天继续重点观察步态和食欲变化。"
+    } else {
+        "本喵今天整体以低风险为主，情绪和活动节奏稳定，属于舒适放松的一天。"
+    }
+    val ownerAdviceText = if (isRiskDay) {
+        "给主人的建议：1) 今晚减少高跳和噪音刺激；2) 明早复查起身动作与进食饮水；3) 若连续两天中高风险，尽快线下评估。"
+    } else {
+        "给主人的建议：1) 保持规律陪玩和饮水补给；2) 继续记录早晚两次状态；3) 维持熟悉环境，避免突发应激。"
+    }
+    val summaryBg = if (isRiskDay) Color(0xFFFFF1F2) else Color(0xFFF0FDF4)
+    val summaryBorder = if (isRiskDay) Color(0xFFFECDD3) else Color(0xFFBBF7D0)
+    val summaryTitleColor = if (isRiskDay) Color(0xFFBE123C) else Color(0xFF166534)
+    val summaryBodyColor = if (isRiskDay) Color(0xFF9F1239) else Color(0xFF14532D)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -849,7 +1195,7 @@ private fun HistoryTabScreen(
             ) {
                 Column {
                     Text("当前查看", style = MaterialTheme.typography.bodySmall, color = AppMuted)
-                    Text("2026年04月18日", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
+                    Text(latestDateLabel, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
                 }
                 Text("日历", color = Color(0xFF65A30D), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
@@ -873,7 +1219,7 @@ private fun HistoryTabScreen(
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("最快乐时刻", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.86f))
-                    Text("10:30 AM", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(happiestTimeLabel, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
                     Text("罐头时间喵！", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.92f))
                 }
             }
@@ -884,26 +1230,31 @@ private fun HistoryTabScreen(
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("平均压力", style = MaterialTheme.typography.bodySmall, color = Color(0xFF92400E))
-                    Text("12%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
+                    Text("${stressPercent}%", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
                     Text("本喵很放松~", style = MaterialTheme.typography.bodySmall, color = Color(0xFF65A30D))
                 }
             }
         }
-        if (responses.isEmpty()) {
+        if (timelineEntries.isEmpty()) {
             EmptyStateCard(
                 title = "还没有喵语档案",
                 description = "先完成一次识别，历史页会开始记录本喵的状态变化。",
             )
         } else {
             Text("时间足迹", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color(0xFF7C2D12))
-            responses.take(8).forEachIndexed { index, item ->
+            timelineEntries.forEach { item ->
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
                     Box(
                         modifier = Modifier
                             .padding(top = 8.dp)
                             .size(12.dp)
                             .background(
-                                if (index == 0) Color(0xFF84CC16) else Color(0xFFF59E0B),
+                                when (item.level.lowercase()) {
+                                    "low" -> Color(0xFF84CC16)
+                                    "medium" -> Color(0xFFF59E0B)
+                                    "high", "urgent" -> Color(0xFFEF4444)
+                                    else -> Color(0xFF9CA3AF)
+                                },
                                 CircleShape,
                             ),
                     )
@@ -920,11 +1271,15 @@ private fun HistoryTabScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    if (index == 0) "最新记录" else "历史记录 ${index + 1}",
+                                    item.phaseLabel,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF7C2D12),
                                 )
-                                Text(item.health_risk_assessment.level.uppercase(), style = MaterialTheme.typography.bodySmall, color = AppMuted)
+                                Text(
+                                    "${item.timeLabel} · ${item.level.uppercase()}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = AppMuted,
+                                )
                             }
                             Text(
                                 item.summary,
@@ -933,11 +1288,33 @@ private fun HistoryTabScreen(
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            item.followup_questions.firstOrNull()?.let {
-                                AssistChip(onClick = onOpenResult, label = { Text("去追问：$it") })
-                            }
+                            AssistChip(onClick = onOpenResult, label = { Text("给主人建议：${item.ownerAdvice}") })
                         }
                     }
+                }
+            }
+            Card(
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = summaryBg),
+                border = BorderStroke(1.dp, summaryBorder),
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        if (isRiskDay) "今日总结（风险日）" else "今日总结（稳定日）",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = summaryTitleColor,
+                    )
+                    Text(
+                        daySummaryText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = summaryBodyColor,
+                    )
+                    Text(
+                        ownerAdviceText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = summaryBodyColor,
+                    )
                 }
             }
         }
@@ -1222,6 +1599,9 @@ private fun HealthDigestCard(
     response: AnalyzeResponse?,
     onOpenHealth: () -> Unit,
 ) {
+    val activeMeta = demoMetaOf(response)
+    val activePetName = activeMeta?.petName ?: "布丁"
+    val activeTimeLabel = activeMeta?.timeLabel ?: "10:24 AM"
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(26.dp),
@@ -1246,12 +1626,12 @@ private fun HealthDigestCard(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("布丁（美短）", fontWeight = FontWeight.Bold)
+                    Text("$activePetName（美短）", fontWeight = FontWeight.Bold)
                     Text(summary, style = MaterialTheme.typography.bodySmall, color = AppMuted, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("上次检测", style = MaterialTheme.typography.bodySmall, color = AppMuted)
-                    Text("10:24 AM", fontWeight = FontWeight.Medium)
+                    Text(activeTimeLabel, fontWeight = FontWeight.Medium)
                 }
             }
             ScoreLine("当前稳定度", emotionScore.coerceIn(0, 100), AppGreen)

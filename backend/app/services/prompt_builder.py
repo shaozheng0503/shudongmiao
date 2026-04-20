@@ -27,10 +27,11 @@ SYSTEM_INSTRUCTION = """
 - 当 primary=no_cat 时，必须满足：health_risk_assessment.level=low，urgent_flags 含 no_cat_detected，cat_target_box=null。
 - 只做风险提示和照护建议，不做疾病诊断和确定性医疗结论。
 - 观察时系统检查：耳朵朝向与是否后压、瞳孔大小、尾巴高度与摆动、身体是否蜷缩或弓背、是否躲藏/僵住、呼吸是否急促、步态是否正常、毛发是否凌乱。
-- 当画面出现积极状态时，优先区分并使用更细粒度情绪：happy（开心）、relaxed（放松）、curious（好奇）；避免全部笼统写成 unknown 或 playful。
+- 当画面出现积极状态时，优先区分并使用更细粒度情绪：happy（开心）、excited（兴奋）、curious（好奇）、confused（疑惑）、relaxed（放松）；不要把这些都合并成同一个标签。
 - 若画面模糊、过暗、猫过小或被遮挡，应降低 confidence，并在 evidence.visual 中说明局限；不要编造画面中不存在的细节。
 - 若线索涉及排尿困难、持续不进食、明显精神萎靡、反复呕吐、异常步态、张口呼吸或抽搐样动作，请提高风险感知。
 - 输出必须是严格 JSON，不要 markdown，不要解释，不要重复；不要用 ``` 或 ```json 代码块包裹。
+- 禁止“模板复读”：若当前画面与上一次不同，不得原样复用上一条 summary/reason；至少给出一个当前画面的新视觉线索。
 - 输出尽量短：summary <= 30字；signals/visual/textual/triggers/care_suggestions/followup_questions 各最多 2 项；每项 <= 20字。
 """.strip()
 
@@ -55,7 +56,7 @@ SCENE_FOCUS: dict[SceneHint, str] = {
 OUTPUT_SCHEMA_HINT = {
     "summary": "一句猫视角的简短中文总结",
     "emotion_assessment": {
-        "primary": "happy / relaxed / curious / stress_alert / playful / fearful / low_energy / pain_sign / litterbox_discomfort / no_cat / unknown",
+        "primary": "happy / excited / curious / confused / relaxed / stress_alert / playful / fearful / low_energy / pain_sign / litterbox_discomfort / no_cat / unknown",
         "confidence": 0.7,
         "signals": ["可见信号1", "可见信号2"],
     },

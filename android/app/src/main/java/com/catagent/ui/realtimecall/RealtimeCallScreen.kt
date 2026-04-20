@@ -37,13 +37,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -93,8 +98,11 @@ fun RealtimeCallScreen(
     var autoStartDone by rememberSaveable { mutableStateOf(false) }
     var isListening by remember { mutableStateOf(false) }
     var speechStatus by remember { mutableStateOf("点击麦克风开始说话") }
-    var handsFreeMode by remember { mutableStateOf(true) }
+    val handsFreeMode = true
     var autoSpeak by remember { mutableStateOf(true) }
+    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
+    var showClearDialog by rememberSaveable { mutableStateOf(false) }
+    var showEndCallDialog by rememberSaveable { mutableStateOf(false) }
     var ttsReady by remember { mutableStateOf(false) }
     var lastSpokenSummary by remember { mutableStateOf<String?>(null) }
     var lastVoiceResultAtMs by remember { mutableStateOf(0L) }
@@ -333,6 +341,53 @@ fun RealtimeCallScreen(
         )
     }
 
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("清空对话记录") },
+            text = { Text("清空后无法恢复，是否继续？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearDialog = false
+                        viewModel.clearConversationMemory()
+                    },
+                ) {
+                    Text("确认清空")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+
+    if (showEndCallDialog) {
+        AlertDialog(
+            onDismissRequest = { showEndCallDialog = false },
+            title = { Text("结束当前通话") },
+            text = { Text("结束后会返回上一页，是否确认结束？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showEndCallDialog = false
+                        viewModel.stop()
+                        onBack()
+                    },
+                ) {
+                    Text("确认结束")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEndCallDialog = false }) {
+                    Text("继续通话")
+                }
+            },
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color(0xFF111111))) {
         if (cameraGranted) {
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -436,40 +491,19 @@ fun RealtimeCallScreen(
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            Text("通话模式", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
-                            Text(
-                                when (uiState.modePreset) {
-                                    RealtimeCallModePreset.RESPONSIVE -> "高响应"
-                                    RealtimeCallModePreset.BALANCED -> "均衡"
-                                    RealtimeCallModePreset.STABLE -> "稳妥"
-                                    RealtimeCallModePreset.CUSTOM -> "自定义"
-                                },
-                                style = MaterialTheme.typography.titleSmall,
-                            )
+                            Text("通话状态", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                             Text(uiState.catHint, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
+                            if (uiState.switchingTarget) {
+                                Text(
+                                    "检测到新目标，正在切换结果...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color(0xFFFDE68A),
+                                )
+                            }
                         }
                     }
                 }
 
-                Column(
-                    modifier = Modifier
-                        .padding(top = 72.dp)
-                        .width(136.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    CallDebugStatCard(
-                        title = "AI Confidence",
-                        value = "${((uiState.latestResponse?.emotion_assessment?.confidence ?: 0.0) * 100).toInt()}%",
-                    )
-                    CallDebugStatCard(
-                        title = "Stress Level",
-                        value = uiState.latestResponse?.health_risk_assessment?.level?.uppercase() ?: "WAIT",
-                    )
-                    CallDebugStatCard(
-                        title = "Latency",
-                        value = "${uiState.avgLatencyMs} ms",
-                    )
-                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -490,7 +524,7 @@ fun RealtimeCallScreen(
                             }
                             if (uiState.dialogueLoading) {
                                 Text(
-                                    "模型思考中...",
+                                    "正在整理回复...",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.72f),
                                     modifier = Modifier.padding(start = 40.dp),
@@ -532,8 +566,6 @@ fun RealtimeCallScreen(
                                     title = item.title,
                                     sourceType = item.source_type,
                                     summary = item.content,
-                                    score = item.score,
-                                    riskRelation = knowledgeRiskRelation(item, uiState.latestResponse),
                                     possibleCauses = item.possible_causes,
                                     careAdvice = item.care_advice,
                                 )
@@ -594,25 +626,34 @@ fun RealtimeCallScreen(
                                         viewModel.sendDialogueTurn(text)
                                     }
                                 },
+                                enabled = promptText.isNotBlank(),
                                 modifier = Modifier.weight(1f),
                             ) {
                                 Text(if (uiState.dialogueLoading) "排队发送(${uiState.queuedDialogueCount})" else "发送")
                             }
-                            Button(
-                                onClick = { viewModel.clearConversationMemory() },
-                                modifier = Modifier.weight(1f),
-                            ) {
-                                Text("清空记忆")
+                            Box {
+                                OutlinedButton(onClick = { showMoreMenu = true }) {
+                                    Text("更多")
+                                }
+                                DropdownMenu(
+                                    expanded = showMoreMenu,
+                                    onDismissRequest = { showMoreMenu = false },
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("清空对话记录") },
+                                        onClick = {
+                                            showMoreMenu = false
+                                            showClearDialog = true
+                                        },
+                                    )
+                                }
                             }
                         }
                         Row(
                             modifier = Modifier.horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            AssistChip(onClick = { viewModel.applyModePreset(RealtimeCallModePreset.RESPONSIVE) }, label = { Text(if (uiState.modePreset == RealtimeCallModePreset.RESPONSIVE) "高响应✓" else "高响应") })
-                            AssistChip(onClick = { viewModel.applyModePreset(RealtimeCallModePreset.BALANCED) }, label = { Text(if (uiState.modePreset == RealtimeCallModePreset.BALANCED) "均衡✓" else "均衡") })
-                            AssistChip(onClick = { viewModel.applyModePreset(RealtimeCallModePreset.STABLE) }, label = { Text(if (uiState.modePreset == RealtimeCallModePreset.STABLE) "稳妥✓" else "稳妥") })
-                            AssistChip(onClick = { autoSpeak = !autoSpeak }, label = { Text(if (autoSpeak) "播报开" else "播报关") })
+                            AssistChip(onClick = { autoSpeak = !autoSpeak }, label = { Text(if (autoSpeak) "自动播报：开" else "自动播报：关") })
                             AssistChip(
                                 onClick = {
                                     val speechText = uiState.latestAssistantUtterance.ifBlank {
@@ -638,7 +679,7 @@ fun RealtimeCallScreen(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Button(
@@ -651,15 +692,14 @@ fun RealtimeCallScreen(
                                 startSpeechListening()
                             }
                         },
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (isListening) "停" else "麦")
+                        Text(if (isListening) "停止语音" else "语音输入")
                     }
                     Button(
                         onClick = {
                             if (uiState.running) {
-                                viewModel.stop()
-                                onBack()
+                                showEndCallDialog = true
                             } else {
                                 viewModel.pushUserIntent(promptText)
                                 viewModel.start(
@@ -673,40 +713,19 @@ fun RealtimeCallScreen(
                                 )
                             }
                         },
-                        modifier = Modifier.size(74.dp),
+                        modifier = Modifier.weight(1f),
                         colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626)),
                     ) {
-                        Text(if (uiState.running) "挂断" else "开始")
+                        Text(if (uiState.running) "结束通话" else "开始通话")
                     }
                     Button(
                         onClick = { useFrontCamera = !useFrontCamera },
-                        modifier = Modifier.size(56.dp),
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Text(if (useFrontCamera) "前" else "后")
+                        Text(if (useFrontCamera) "切到后置" else "切到前置")
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun CallDebugStatCard(
-    title: String,
-    value: String,
-) {
-    Card(
-        colors = CardDefaults.cardColors(
-            containerColor = Color.Black.copy(alpha = 0.42f),
-            contentColor = Color.White,
-        ),
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(title, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.65f))
-            Text(value, style = MaterialTheme.typography.titleSmall)
         }
     }
 }
@@ -716,8 +735,6 @@ private fun RealtimeCallKnowledgeItem(
     title: String,
     sourceType: String,
     summary: String,
-    score: Double,
-    riskRelation: String,
     possibleCauses: List<String>,
     careAdvice: List<String>,
 ) {
@@ -744,30 +761,6 @@ private fun RealtimeCallKnowledgeItem(
                 )
             }
             Text(title, style = MaterialTheme.typography.bodyMedium, color = Color.White)
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFF2563EB).copy(alpha = 0.36f),
-            ) {
-                Text(
-                    "命中 ${(score * 100).toInt()}%",
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-            }
-            Surface(
-                shape = CircleShape,
-                color = Color(0xFFB45309).copy(alpha = 0.36f),
-            ) {
-                Text(
-                    riskRelation,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.White,
-                )
-            }
         }
         Text(summary, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.76f))
         Text(

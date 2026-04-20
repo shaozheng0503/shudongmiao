@@ -69,6 +69,7 @@ data class RealtimeCallUiState(
     val modePreset: RealtimeCallModePreset = RealtimeCallModePreset.BALANCED,
     val interruptPriorityMode: Boolean = true,
     val statusText: String = "等待开始实时通话",
+    val switchingTarget: Boolean = false,
     val error: String? = null,
 )
 
@@ -106,6 +107,7 @@ class RealtimeCallViewModel(
                 consecutiveNoCatCount = 0,
                 consecutiveDetectedCount = 0,
                 consecutiveBusyCount = 0,
+                switchingTarget = false,
             )
             while (true) {
                 val requestStartMs = System.currentTimeMillis()
@@ -115,6 +117,7 @@ class RealtimeCallViewModel(
                         statusText = "持续分析中...",
                         catStatus = RealtimeCallCatStatus.UNKNOWN,
                         catHint = "正在识别猫目标...",
+                        switchingTarget = false,
                     )
                     val frameUri = captureFrame()
                     val prompt = buildPromptWithMemory(
@@ -188,10 +191,19 @@ class RealtimeCallViewModel(
                     val shouldAdoptResponse = when {
                         modelBusy -> true
                         noCat -> true
+                        // 新目标证据足够强时，允许快速切换，避免旧结果停留过久。
+                        current.latestResponse != null &&
+                            (current.latestResponse.emotion_assessment.primary != response.emotion_assessment.primary ||
+                                current.latestResponse.health_risk_assessment.level != response.health_risk_assessment.level) &&
+                            evidenceRich &&
+                            (boxConfidence >= 0.55 || response.emotion_assessment.confidence >= 0.68) -> true
                         current.consecutiveNoCatCount >= 2 && nextDetectedCount < 2 -> false
                         !detectionStable && current.latestResponse != null -> false
                         else -> true
                     }
+                    val switchingTarget = !shouldAdoptResponse && current.latestResponse != null &&
+                        (current.latestResponse.emotion_assessment.primary != response.emotion_assessment.primary ||
+                            current.latestResponse.health_risk_assessment.level != response.health_risk_assessment.level)
                     val displayResponse = if (shouldAdoptResponse) response else (current.latestResponse ?: response)
                     appendModelSummary(response.summary)
                     _uiState.value = _uiState.value.copy(
@@ -207,13 +219,16 @@ class RealtimeCallViewModel(
                         modelBusyCount = if (modelBusy) current.modelBusyCount + 1 else current.modelBusyCount,
                         consecutiveBusyCount = nextBusyCount,
                         catStatus = when {
+                            modelBusy -> RealtimeCallCatStatus.UNKNOWN
                             noCat -> RealtimeCallCatStatus.NOT_DETECTED
+                            switchingTarget -> RealtimeCallCatStatus.UNKNOWN
                             nextDetectedCount >= 2 -> RealtimeCallCatStatus.DETECTED
                             else -> RealtimeCallCatStatus.UNKNOWN
                         },
                         consecutiveNoCatCount = nextNoCatCount,
                         consecutiveDetectedCount = nextDetectedCount,
                         catHint = when {
+                            modelBusy -> "当前网络较忙，沿用上一帧结果中"
                             noCat && nextNoCatCount >= 3 -> "连续${nextNoCatCount}帧未检测到猫，请靠近并稳定镜头"
                             noCat -> "未检测到猫，请把镜头对准猫咪"
                             !detectionStable && current.consecutiveNoCatCount >= 2 ->
@@ -225,9 +240,11 @@ class RealtimeCallViewModel(
                             else -> "已检测到猫，模型未返回坐标，使用参考框"
                         },
                         statusText = if (modelBusy) {
-                            "模型繁忙，已降频到 ${nextInterval / 1000.0}s"
+                            "当前网络较忙，已自动放慢到 ${nextInterval / 1000.0}s"
                         } else if (noCat && nextNoCatCount >= 3) {
                             "连续未检测到猫，已自动放慢节奏到 ${nextInterval / 1000.0}s"
+                        } else if (switchingTarget) {
+                            "检测到新目标，正在切换结果..."
                         } else if (!detectionStable && current.consecutiveNoCatCount >= 2) {
                             "检测信号较弱，正在二次确认后更新结果"
                         } else if (!noCat && current.consecutiveNoCatCount >= 2) {
@@ -235,6 +252,7 @@ class RealtimeCallViewModel(
                         } else {
                             "最新判断已更新"
                         },
+                        switchingTarget = switchingTarget,
                         error = null,
                     )
                 }.onFailure { throwable ->
@@ -250,7 +268,8 @@ class RealtimeCallViewModel(
                         failureCount = current.failureCount + 1,
                         avgLatencyMs = if (current.avgLatencyMs == 0L) requestLatency else current.avgLatencyMs,
                         dialogueMemory = dialogueMemorySnapshot(),
-                        statusText = "实时通话失败，${nextInterval / 1000.0}s 后重试...",
+                        statusText = "连接波动，${nextInterval / 1000.0}s 后重试...",
+                        switchingTarget = false,
                         error = throwable.toUserFacingApiMessage("实时通话失败"),
                     )
                 }
@@ -278,6 +297,7 @@ class RealtimeCallViewModel(
             consecutiveNoCatCount = 0,
             consecutiveDetectedCount = 0,
             consecutiveBusyCount = 0,
+            switchingTarget = false,
             dialogueMemory = dialogueMemorySnapshot(),
         )
     }

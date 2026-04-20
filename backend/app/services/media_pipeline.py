@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import hashlib
 import io
 import mimetypes
 import shutil
@@ -35,6 +36,7 @@ class MediaPipeline:
         temp_file = Path(tempfile.mkstemp(suffix=suffix, dir=settings.temp_dir)[1])
         try:
             content = await upload.read()
+            content_sha1 = hashlib.sha1(content).hexdigest()
             temp_file.write_bytes(content)
             if media_type is MediaType.IMAGE:
                 if len(content) > settings.max_image_bytes:
@@ -42,19 +44,19 @@ class MediaPipeline:
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                         detail="图片过大，请压缩后重试。",
                     )
-                return await asyncio.to_thread(self._prepare_image, temp_file)
+                return await asyncio.to_thread(self._prepare_image, temp_file, content_sha1)
 
             if len(content) > settings.max_video_bytes:
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                     detail="视频过大，请控制在 40MB 内。",
                 )
-            return await asyncio.to_thread(self._prepare_video, temp_file)
+            return await asyncio.to_thread(self._prepare_video, temp_file, content_sha1)
         finally:
             if temp_file.exists():
                 temp_file.unlink(missing_ok=True)
 
-    def _prepare_image(self, path: Path) -> PreparedMedia:
+    def _prepare_image(self, path: Path, content_sha1: str) -> PreparedMedia:
         with Image.open(path) as image:
             image = image.convert("RGB")
             width, height = image.size
@@ -68,10 +70,10 @@ class MediaPipeline:
             data_url=data_url,
             width=width,
             height=height,
-            metadata={"source": "image_upload"},
+            metadata={"source": "image_upload", "content_sha1": content_sha1},
         )
 
-    def _prepare_video(self, path: Path) -> PreparedMedia:
+    def _prepare_video(self, path: Path, content_sha1: str) -> PreparedMedia:
         metadata = self._probe_video(path)
         duration = float(metadata.get("duration", 0.0))
         mime_type = mimetypes.guess_type(path.name)[0] or "video/mp4"
@@ -90,7 +92,7 @@ class MediaPipeline:
                 duration_seconds=duration,
                 width=int(metadata.get("width", 0)) or None,
                 height=int(metadata.get("height", 0)) or None,
-                metadata={"source": "native_video_upload"},
+                metadata={"source": "native_video_upload", "content_sha1": content_sha1},
             )
 
         frames = self._extract_key_frames(path, max_frames=settings.max_frame_count)
@@ -107,7 +109,7 @@ class MediaPipeline:
             duration_seconds=duration,
             width=int(metadata.get("width", 0)) or None,
             height=int(metadata.get("height", 0)) or None,
-            metadata={"frame_count": len(frames), "source": "video_keyframes"},
+            metadata={"frame_count": len(frames), "source": "video_keyframes", "content_sha1": content_sha1},
         )
 
     def _probe_video(self, path: Path) -> dict[str, float | int]:

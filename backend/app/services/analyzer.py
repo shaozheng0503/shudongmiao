@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import Counter, deque
 from time import perf_counter
+from time import monotonic
 
 from fastapi import HTTPException, UploadFile, status
 
@@ -27,6 +28,7 @@ from app.services.retriever import retriever
 from app.services.risk_engine import risk_engine
 
 logger = logging.getLogger(__name__)
+_NUANCED_EMOTIONS = {"happy", "excited", "curious", "confused", "relaxed"}
 
 
 class CatStateAnalyzer:
@@ -35,6 +37,8 @@ class CatStateAnalyzer:
         self._realtime_windows: dict[str, deque[AnalyzeResponse]] = {}
         self._visual_knowledge_cache: dict[str, list[KnowledgeSnippet]] = {}
         self._realtime_visual_counter: Counter[str] = Counter()
+        self._high_risk_cooldown_until: dict[str, float] = {}
+        self._last_analyze_media_fp: dict[str, str] = {}
 
     async def analyze(
         self, meta: AnalyzeRequestMeta, upload: UploadFile | None
@@ -74,6 +78,14 @@ class CatStateAnalyzer:
             user_text=meta.input_text,
             model_tags=[parsed.emotion_assessment.primary, *parsed.health_risk_assessment.triggers],
             knowledge_hits=knowledge,
+        )
+        self._attach_knowledge_refs_if_missing(response, knowledge)
+        media_fp = str(media.metadata.get("content_sha1", ""))
+        response = self._guard_duplicate_analyze_result(
+            session_id=session.session_id,
+            response=response,
+            previous=session.latest_response,
+            media_fp=media_fp,
         )
         response.retrieved_knowledge = [item.model_copy(deep=True) for item in knowledge]
         session_store.save_response(session.session_id, response)
@@ -154,6 +166,7 @@ class CatStateAnalyzer:
             model_tags=[parsed.emotion_assessment.primary, *parsed.health_risk_assessment.triggers],
             knowledge_hits=knowledge,
         )
+        self._attach_knowledge_refs_if_missing(response, knowledge)
         if response.emotion_assessment.primary == "no_cat" or "no_cat_detected" in response.urgent_flags:
             response.retrieved_knowledge = []
         else:
@@ -256,6 +269,7 @@ class CatStateAnalyzer:
             model_tags=[parsed.emotion_assessment.primary, *parsed.health_risk_assessment.triggers],
             knowledge_hits=knowledge,
         )
+        self._attach_knowledge_refs_if_missing(response, knowledge)
         response.retrieved_knowledge = [item.model_copy(deep=True) for item in knowledge]
         session_store.save_response(session.session_id, response)
         session_store.append_turn(session.session_id, "assistant", response.summary)
@@ -294,6 +308,26 @@ class CatStateAnalyzer:
             session_id,
             deque(maxlen=self._realtime_window_size),
         )
+        previous = window[-1] if window else None
+
+        # 一旦当前帧判定为 no_cat / non_cat，立即清空融合窗口，防止旧猫结果残留。
+        if self._is_no_cat_response(response):
+            window.clear()
+            window.append(response.model_copy(deep=True))
+            response.cat_target_box = None
+            response.realtime_debug = RealtimeFusionDebug(
+                window_size=1,
+                fused=False,
+                raw_emotions=[response.emotion_assessment.primary],
+                raw_risk_levels=[response.health_risk_assessment.level.value],
+                note="当前帧未检测到猫，已重置实时融合窗口。",
+            )
+            return response
+
+        # 从 no_cat 恢复到有猫目标时也立即重置窗口，确保新目标快速生效。
+        if previous is not None and self._is_no_cat_response(previous):
+            window.clear()
+
         window.append(response.model_copy(deep=True))
         snapshot = list(window)
         if len(snapshot) <= 1:
@@ -307,15 +341,22 @@ class CatStateAnalyzer:
             return response
 
         fused = response.model_copy(deep=True)
-        emotion_candidates = [item.emotion_assessment.primary for item in snapshot]
+        tail = snapshot[-3:]
+        emotion_candidates = [item.emotion_assessment.primary for item in tail]
         risk_candidates = [item.health_risk_assessment.level for item in snapshot]
 
-        fused.emotion_assessment.primary = self._emotion_fusion_from_window(emotion_candidates)
+        fused.emotion_assessment.primary = self._emotion_fusion_from_window(tail, response)
         fused.emotion_assessment.confidence = max(
             0.0,
-            min(1.0, sum(item.emotion_assessment.confidence for item in snapshot) / len(snapshot)),
+            min(1.0, sum(item.emotion_assessment.confidence for item in tail) / len(tail)),
         )
-        fused.health_risk_assessment.level = self._max_risk(risk_candidates)
+        fused_risk = self._risk_fusion_from_window(snapshot, response)
+        fused.health_risk_assessment.level = self._apply_realtime_risk_cooldown(
+            session_id=session_id,
+            snapshot=snapshot,
+            candidate=fused_risk,
+            latest=response,
+        )
         fused.health_risk_assessment.score = max(
             0.0,
             min(1.0, sum(item.health_risk_assessment.score for item in snapshot) / len(snapshot)),
@@ -327,25 +368,46 @@ class CatStateAnalyzer:
         fused.care_suggestions = list(
             dict.fromkeys(suggestion for item in snapshot for suggestion in item.care_suggestions)
         )[:3]
-        fused.summary = f"连续{len(snapshot)}帧融合：{response.summary}"
+        fused.summary = f"连续{len(tail)}帧融合：{response.summary}"
         fused.realtime_debug = RealtimeFusionDebug(
-            window_size=len(snapshot),
+            window_size=len(tail),
             fused=True,
             raw_emotions=emotion_candidates,
             raw_risk_levels=[level.value for level in risk_candidates],
-            note="已按最近多帧融合：情绪对 no_cat/unknown 去抖，风险取窗口内最高等级。",
+            note="已按最近多帧融合：情绪去抖；高风险需2/3帧确认，并带冷却保护。",
         )
         return fused
 
     @staticmethod
-    def _emotion_fusion_from_window(items: list[str]) -> str:
+    def _emotion_fusion_from_window(snapshot: list[AnalyzeResponse], latest: AnalyzeResponse) -> str:
         """多数帧为未检测到猫时，若窗口内存在有效情绪标签则优先采用，减少误判抖动。"""
-        if not items:
+        if not snapshot:
             return "unknown"
+        latest_primary = latest.emotion_assessment.primary
+        latest_strong = bool(latest.evidence.visual) and (
+            (latest.cat_target_box is not None and latest.cat_target_box.confidence >= 0.5)
+            or latest.emotion_assessment.confidence >= 0.68
+        )
+        if latest_primary not in ("no_cat", "unknown") and latest_strong:
+            return latest_primary
+        # 对“开心/兴奋/疑惑/好奇/放松”等细粒度情绪，放宽切换门槛，避免被多数帧压成同一标签。
+        if (
+            latest_primary in _NUANCED_EMOTIONS
+            and latest.emotion_assessment.confidence >= 0.58
+            and (latest.cat_target_box is not None or bool(latest.evidence.visual))
+        ):
+            return latest_primary
+        items = [item.emotion_assessment.primary for item in snapshot]
         non_special = [x for x in items if x not in ("no_cat", "unknown")]
         if non_special:
             return Counter(non_special).most_common(1)[0][0]
         return Counter(items).most_common(1)[0][0]
+
+    @staticmethod
+    def _is_no_cat_response(response: AnalyzeResponse) -> bool:
+        return response.emotion_assessment.primary == "no_cat" or any(
+            flag in {"no_cat_detected", "non_cat_target_detected"} for flag in response.urgent_flags
+        )
 
     def _remember_visual_hits(self, session_id: str, knowledge: list[KnowledgeSnippet]) -> None:
         visual_hits = [item.model_copy(deep=True) for item in knowledge if item.source_type in {"visual", "hybrid"}]
@@ -391,6 +453,122 @@ class CatStateAnalyzer:
             RiskLevel.URGENT: 3,
         }
         return max(items, key=lambda level: order[level])
+
+    @staticmethod
+    def _risk_fusion_from_window(snapshot: list[AnalyzeResponse], latest: AnalyzeResponse) -> RiskLevel:
+        if not snapshot:
+            return RiskLevel.LOW
+        tail = snapshot[-3:]
+        level_counts = Counter(item.health_risk_assessment.level for item in tail)
+        high_like_count = level_counts[RiskLevel.HIGH] + level_counts[RiskLevel.URGENT]
+        latest_level = latest.health_risk_assessment.level
+
+        # 最近 3 帧中至少 2 帧高风险才稳定升级，减少单帧误报跳红。
+        if high_like_count >= 2:
+            return CatStateAnalyzer._max_risk([item.health_risk_assessment.level for item in tail])
+
+        latest_has_strong_evidence = bool(latest.evidence.visual) and (
+            (latest.cat_target_box is not None and latest.cat_target_box.confidence >= 0.55)
+            or latest.emotion_assessment.confidence >= 0.7
+        )
+        if latest_level in {RiskLevel.HIGH, RiskLevel.URGENT} and latest_has_strong_evidence:
+            return latest_level
+
+        # 无连续高风险时，优先回到中低风险主流，避免“高风险残留”。
+        if level_counts[RiskLevel.MEDIUM] >= level_counts[RiskLevel.LOW]:
+            return RiskLevel.MEDIUM if level_counts[RiskLevel.MEDIUM] > 0 else RiskLevel.LOW
+        return RiskLevel.LOW
+
+    def _apply_realtime_risk_cooldown(
+        self,
+        *,
+        session_id: str,
+        snapshot: list[AnalyzeResponse],
+        candidate: RiskLevel,
+        latest: AnalyzeResponse,
+    ) -> RiskLevel:
+        if len(snapshot) <= 1:
+            return candidate
+        high_like = {RiskLevel.HIGH, RiskLevel.URGENT}
+        previous = snapshot[-2].health_risk_assessment.level
+        now = monotonic()
+        cooldown_until = self._high_risk_cooldown_until.get(session_id, 0.0)
+
+        # 从高风险回落后进入冷却窗口，防止马上再次跳红。
+        if previous in high_like and candidate not in high_like:
+            self._high_risk_cooldown_until[session_id] = now + 10.0
+            return candidate
+
+        if previous not in high_like and candidate in high_like:
+            strong_override = (
+                bool(latest.evidence.visual)
+                and latest.cat_target_box is not None
+                and latest.cat_target_box.confidence >= 0.75
+                and latest.emotion_assessment.confidence >= 0.75
+            )
+            if now < cooldown_until and not strong_override:
+                return RiskLevel.MEDIUM
+            self._high_risk_cooldown_until[session_id] = now + 10.0
+        return candidate
+
+    def _guard_duplicate_analyze_result(
+        self,
+        *,
+        session_id: str,
+        response: AnalyzeResponse,
+        previous: AnalyzeResponse | None,
+        media_fp: str,
+    ) -> AnalyzeResponse:
+        prev_fp = self._last_analyze_media_fp.get(session_id, "")
+        if media_fp:
+            self._last_analyze_media_fp[session_id] = media_fp
+        if not previous or not prev_fp or not media_fp or prev_fp == media_fp:
+            return response
+        if self._result_signature(previous) != self._result_signature(response):
+            return response
+
+        guarded = response.model_copy(deep=True)
+        guarded.summary = "本喵看到了新画面，但这次判断可能被复读啦，请换角度再拍喵。"
+        guarded.emotion_assessment.primary = "unknown"
+        guarded.emotion_assessment.confidence = min(guarded.emotion_assessment.confidence, 0.38)
+        guarded.health_risk_assessment.level = RiskLevel.LOW
+        guarded.health_risk_assessment.score = min(guarded.health_risk_assessment.score, 0.35)
+        guarded.health_risk_assessment.reason = "这次画面内容已变化，但模型输出与上一条几乎一致，已降级为待确认结果。"
+        if "stale_repeat_guard" not in guarded.health_risk_assessment.triggers:
+            guarded.health_risk_assessment.triggers.append("stale_repeat_guard")
+        if "stale_repeat_guard" not in guarded.urgent_flags:
+            guarded.urgent_flags.append("stale_repeat_guard")
+        if "当前帧与上一结果过于一致，建议重拍" not in guarded.evidence.visual:
+            guarded.evidence.visual.append("当前帧与上一结果过于一致，建议重拍")
+        guarded.cat_target_box = None
+        if not guarded.care_suggestions:
+            guarded.care_suggestions = []
+        guarded.care_suggestions = [
+            "请换个角度或距离再拍一次，本喵再认真看喵。",
+            *guarded.care_suggestions[:1],
+        ]
+        return guarded
+
+    @staticmethod
+    def _attach_knowledge_refs_if_missing(response: AnalyzeResponse, knowledge: list[KnowledgeSnippet]) -> None:
+        if response.emotion_assessment.primary == "no_cat" or "no_cat_detected" in response.urgent_flags:
+            return
+        existing_refs = [ref.strip() for ref in response.evidence.knowledge_refs if ref and ref.strip()]
+        if existing_refs:
+            response.evidence.knowledge_refs = existing_refs
+            return
+        if not knowledge:
+            return
+        response.evidence.knowledge_refs = [item.doc_id for item in knowledge[:2]]
+
+    @staticmethod
+    def _result_signature(response: AnalyzeResponse) -> tuple[str, str, str, tuple[str, ...]]:
+        return (
+            (response.summary or "").strip(),
+            response.emotion_assessment.primary,
+            response.health_risk_assessment.level.value,
+            tuple((response.health_risk_assessment.triggers or [])[:2]),
+        )
 
 
 analyzer = CatStateAnalyzer()

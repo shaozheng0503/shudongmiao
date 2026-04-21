@@ -25,12 +25,17 @@
 - [✨ 功能概览](#-功能概览)
 - [🖼️ 功能截图讲解](#-功能截图讲解)
 - [🧠 识别准确性保障](#-识别准确性保障工程向)
+- [🏗️ 架构与数据流](#-架构与数据流)
 - [🗂️ 仓库结构](#-仓库结构)
+- [🔩 后端核心模块一览](#-后端核心模块一览)
+- [📚 知识库组织方式](#-知识库组织方式)
 - [🚀 快速开始：后端](#-快速开始后端)
 - [📱 快速开始：Android](#-快速开始android)
 - [🧪 一键回归测试](#-一键回归测试)
+- [✅ 测试覆盖](#-测试覆盖)
 - [🧭 设计要点（工程向）](#-设计要点工程向)
 - [📡 上游模型与数据格式](#-上游模型与数据格式)
+- [❓ FAQ / 常见问题](#-faq--常见问题)
 - [📝 许可证](#-许可证)
 - [🙌 致谢](#-致谢)
 
@@ -169,6 +174,31 @@
 
 ---
 
+## 🏗️ 架构与数据流
+
+从「按下识别」到「结构化结论上屏」，链路大致如下：
+
+```mermaid
+flowchart LR
+    A[📱 Android Compose<br/>拍照 / 录像 / 相册 / 实时流] -->|multipart 或 base64| B[FastAPI 路由<br/>/analyze · /realtime/frame · /chat/followup]
+    B --> C[media_pipeline<br/>解码 / 抽帧 / 压缩]
+    C --> D[visual_features<br/>亮度 / 清晰度 / 目标框]
+    C --> E[retriever<br/>文本+视觉 混合检索]
+    D --> F[prompt_builder<br/>拼装多模态提示词]
+    E --> F
+    F --> G[minicpm_client<br/>WebSocket 流式]
+    G --> H[response_parser<br/>标签细分 · 闸门降级]
+    H --> I[risk_engine<br/>双证据兜底 · 冷却期]
+    I --> J[analyzer<br/>写回 knowledge_refs<br/>反复读守卫]
+    J -->|结构化 JSON + 检测框| A
+```
+
+- **客户端** 负责媒体采集、UI 渲染与结果叠加。
+- **后端** 负责"从原始像素到可被产品消费的结构化结论"的所有编排。
+- **上游模型** 只负责描述画面与给出初判，**最终输出由后端规则层把关**。
+
+---
+
 ## 🗂️ 仓库结构
 
 ```text
@@ -184,6 +214,38 @@
 │   └── screenshots/         # README 讲解用截图
 └── README.md
 ```
+
+---
+
+## 🔩 后端核心模块一览
+
+> 所有模块位于 [`backend/app/services/`](backend/app/services/)，单文件职责清晰，便于做局部替换或灰度实验。
+
+| 模块 | 体量 | 主要职责 |
+| :-- | :-: | :-- |
+| [`analyzer.py`](backend/app/services/analyzer.py) | ~574 行 | 总编排：串联媒体处理 / 检索 / 提示词 / 模型 / 解析 / 风险，写回 `knowledge_refs` 与反复读守卫 |
+| [`response_parser.py`](backend/app/services/response_parser.py) | ~554 行 | 物种 / 可见性闸门、情绪标签二次细分、置信度校准、否定语义特判 |
+| [`retriever.py`](backend/app/services/retriever.py) | ~668 行 | 文本 + 视觉混合检索，同义词扩展、否定语义、风险词加权 |
+| [`prompt_builder.py`](backend/app/services/prompt_builder.py) | ~269 行 | 人格模板 + 多模态证据拼装；高风险场景自动减少卖萌修辞 |
+| [`minicpm_client.py`](backend/app/services/minicpm_client.py) | ~257 行 | MiniCPM WebSocket 客户端：流式 `prefill_done / chunk / done`，Mock 兼容 |
+| [`media_pipeline.py`](backend/app/services/media_pipeline.py) | ~263 行 | 图片 / 视频解码、抽帧、压缩、Base64 处理 |
+| [`risk_engine.py`](backend/app/services/risk_engine.py) | ~146 行 | 规则化风险分级、双证据要求、冷却期与弱信号保护 |
+| [`visual_features.py`](backend/app/services/visual_features.py) | ~98 行 | 画面质量指标（亮度 / 清晰度 / 目标占比 / 检测框） |
+
+---
+
+## 📚 知识库组织方式
+
+知识库位于 [`backend/knowledge/`](backend/knowledge/)，按使用场景划分：
+
+| 目录 | 内容 |
+| :-- | :-- |
+| `emotion/` | 情绪识别相关知识（肢体信号、发声含义、场景化案例） |
+| `health/` | 健康与风险相关知识（常见症状、需就医信号） |
+| `care/` | 日常照护建议（饮食、陪伴、环境优化等） |
+| `docx_import/` | 使用 `scripts/import_docx_knowledge.py` 从 docx 导入的原始产物 |
+
+检索层会在每次识别时同时命中 **文本证据** 与 **视觉特征证据**，命中条目会以 `doc_id` 形式回写到 `evidence.knowledge_refs`，在客户端结果页展示「命中知识」模块。
 
 ---
 
@@ -308,6 +370,28 @@ backend/.venv/bin/python backend/scripts/regression_emotion_diversity.py \
 
 ---
 
+## ✅ 测试覆盖
+
+`backend/tests/` 下基于 `pytest` 的单元 / 集成测试，覆盖识别链路的每个关键环节：
+
+| 测试文件 | 覆盖范围 |
+| :-- | :-- |
+| [`test_api.py`](backend/tests/test_api.py) | FastAPI 路由层：`analyze` / `followup` / `realtime/frame` / 会话 |
+| [`test_analyzer.py`](backend/tests/test_analyzer.py) | 总编排：知识回写、反复读守卫、异常降级 |
+| [`test_response_parser.py`](backend/tests/test_response_parser.py) | 物种 / 可见性闸门、情绪标签细分、否定语特判 |
+| [`test_risk_engine.py`](backend/tests/test_risk_engine.py) | 风险分级双证据、冷却期、弱信号保护 |
+| [`test_retriever.py`](backend/tests/test_retriever.py) | 混合检索相关性、同义词扩展、风险词加权 |
+| [`test_media_pipeline.py`](backend/tests/test_media_pipeline.py) | 图片 / 视频解码、抽帧、Base64 前缀兼容 |
+| [`test_minicpm_client.py`](backend/tests/test_minicpm_client.py) | WebSocket 流式事件、Mock 模式、异常恢复 |
+
+运行方式：
+
+```bash
+cd backend && . .venv/bin/activate && python -m pytest -v
+```
+
+---
+
 ## 🧭 设计要点（工程向）
 
 - **准确性**：物种/可见性闸门、`no_cat` 与 **非猫目标** 的后处理、解析层硬校验、风险引擎兜底。
@@ -322,6 +406,45 @@ backend/.venv/bin/python backend/scripts/regression_emotion_diversity.py \
 
 - 真实服务返回事件流通常为：`prefill_done` → `chunk(text_delta)` → `done(text)`。
 - 多媒体在发送给上游时多为 **纯 base64**；客户端 / 适配层会处理 `data:*;base64,` 前缀。
+
+---
+
+## ❓ FAQ / 常见问题
+
+<details>
+<summary><b>Q1. 没有 MiniCPM 上游也能跑通整条链路吗？</b></summary>
+
+可以。设置环境变量 `MINICPM_USE_MOCK=1` 后，`minicpm_client` 会返回本地 Mock 响应，便于离线开发与回归测试。
+
+</details>
+
+<details>
+<summary><b>Q2. 为什么同一张图反复识别，有时结果略有差异？</b></summary>
+
+上游模型带有采样随机性。但后端的 **反复读守卫** 会反向保证：**不同输入却输出相同核心字段** 时自动降级为「待确认」。所以"略有差异"是安全行为，不会塌缩成同一个模板。
+
+</details>
+
+<details>
+<summary><b>Q3. 手机连不上后端？</b></summary>
+
+最常见的三种原因：① 手机和电脑不在同一 Wi‑Fi；② 后端监听在 `127.0.0.1` 而非 `0.0.0.0`（脚本默认已用 `0.0.0.0`）；③ 本机防火墙未放行 `8000` 端口。用 `http://你的电脑IP:8000/api/v1/health` 在手机浏览器访问可快速定位。
+
+</details>
+
+<details>
+<summary><b>Q4. 识别到狗 / 人 / 空场景怎么办？</b></summary>
+
+会被 `response_parser.py` 的物种闸门强制改写为 `no_cat`，并清除检测框。客户端收到 `no_cat` 后会引导重拍，而不是把置信度归给"某种情绪"。
+
+</details>
+
+<details>
+<summary><b>Q5. 想替换或训练自己的情绪分类模型？</b></summary>
+
+从 [`analyzer.py`](backend/app/services/analyzer.py) 入手替换编排即可。只要新模型能产出 `summary / primary / confidence / basis` 这几个字段，后端的解析 / 风险 / 知识联动全部沿用。
+
+</details>
 
 ---
 
